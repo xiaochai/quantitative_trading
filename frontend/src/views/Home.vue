@@ -46,8 +46,12 @@
         </button>
       </div>
       <div class="quick-actions">
-        <button @click="goToDataViewer" class="quick-action-btn">
+        <button @click="goToBacktest" class="quick-action-btn">
           <span class="btn-icon">📊</span>
+          <span class="btn-text">策略回测</span>
+        </button>
+        <button @click="goToDataViewer" class="quick-action-btn">
+          <span class="btn-icon">📋</span>
           <span class="btn-text">数据浏览</span>
         </button>
       </div>
@@ -174,6 +178,10 @@ function loadAllStocks() {
 
 function goToDataViewer() {
   router.push({ name: 'DataViewer' })
+}
+
+function goToBacktest() {
+  router.push({ name: 'Backtest' })
 }
 
 onMounted(() => {

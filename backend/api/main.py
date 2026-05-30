@@ -300,6 +300,246 @@ def get_stock_info(page: int = 1, page_size: int = 1000, stock_code: str = None,
         "items": result
     }
 
+@app.get("/api/backtest/bollinger")
+def get_bollinger_backtest(
+    stock_code: str = "600036.SH",
+    period: int = 20,  # 布林带周期
+    std_dev: float = 2.0,  # 标准差倍数
+    db: Session = Depends(get_db)
+):
+    """
+    招商银行增强布林带回测
+
+    策略逻辑：
+    - 触及下轨分批建仓
+    - 回到中轨先减仓
+    - 触及上轨止盈
+    - 跌破成本止损
+    """
+    from datetime import date, timedelta
+
+    initial_capital = 100000.0
+    first_entry_ratio = 0.25
+    second_entry_ratio = 0.20
+    third_entry_ratio = 0.35
+    trend_tolerance = 0.98
+    stop_loss_pct = 0.05
+    partial_take_profit_pct = 0.01
+    third_entry_discount = 0.01
+
+    def to_lot_shares(budget: float, price: float) -> int:
+        if not price or price <= 0:
+            return 0
+        raw_shares = int(budget / price)
+        return raw_shares - raw_shares % 100
+
+    def record_trade(
+        trades: list,
+        trade_date: str,
+        trade_type: str,
+        price: float,
+        shares: int,
+        reason: str,
+        profit: float = None,
+    ):
+        item = {
+            "date": trade_date,
+            "type": trade_type,
+            "price": price,
+            "shares": shares,
+            "reason": reason,
+        }
+        if profit is not None:
+            item["profit"] = profit
+        trades.append(item)
+
+    one_year_ago = date.today() - timedelta(days=365)
+
+    quotes = db.query(DailyQuote).filter(
+        DailyQuote.stock_code == stock_code,
+        DailyQuote.trade_date >= one_year_ago
+    ).order_by(DailyQuote.trade_date).all()
+
+    if not quotes:
+        return {"error": "No data found for the given stock code"}
+
+    bollinger_data = []
+    for i, quote in enumerate(quotes):
+        if i < period - 1:
+            continue
+
+        window_quotes = quotes[i-period+1:i+1]
+        close_prices = [q.close for q in window_quotes if q.close is not None]
+
+        if len(close_prices) < period:
+            continue
+
+        sma = sum(close_prices) / period
+        variance = sum((p - sma) ** 2 for p in close_prices) / period
+        std = variance ** 0.5
+        upper = sma + std_dev * std
+        lower = sma - std_dev * std
+
+        bollinger_data.append({
+            "date": quote.trade_date.isoformat(),
+            "open": quote.open,
+            "high": quote.high,
+            "low": quote.low,
+            "close": quote.close,
+            "volume": quote.volume,
+            "sma": sma,
+            "upper": upper,
+            "lower": lower,
+            "ma60": quote.ma60,
+        })
+
+    trades = []
+    equity_curve = []
+    cash = initial_capital
+    shares = 0
+    avg_cost = 0.0
+    position_layers = 0
+    peak_equity = initial_capital
+    max_drawdown = 0.0
+
+    for data in bollinger_data:
+        close = data["close"]
+        if close is None:
+            continue
+
+        mid = data["sma"]
+        upper = data["upper"]
+        lower = data["lower"]
+        ma60 = data["ma60"]
+        trend_ok = ma60 is None or close >= ma60 * trend_tolerance
+
+        if shares > 0 and close <= avg_cost * (1 - stop_loss_pct):
+            sell_shares = shares
+            cash += sell_shares * close
+            profit = (close - avg_cost) * sell_shares
+            record_trade(trades, data["date"], "SELL", close, sell_shares, "跌破持仓成本 5% 止损", profit)
+            shares = 0
+            avg_cost = 0.0
+            position_layers = 0
+
+        elif shares > 0 and close >= upper:
+            sell_shares = shares
+            cash += sell_shares * close
+            profit = (close - avg_cost) * sell_shares
+            record_trade(trades, data["date"], "SELL", close, sell_shares, "触及布林带上轨全部止盈", profit)
+            shares = 0
+            avg_cost = 0.0
+            position_layers = 0
+
+        elif shares > 0 and close >= mid and close >= avg_cost * (1 + partial_take_profit_pct):
+            sell_shares = int(shares * 0.5)
+            sell_shares -= sell_shares % 100
+            if sell_shares <= 0 and shares >= 100:
+                sell_shares = min(100, shares)
+
+            if sell_shares > 0:
+                cash += sell_shares * close
+                profit = (close - avg_cost) * sell_shares
+                record_trade(trades, data["date"], "SELL", close, sell_shares, "回到中轨先减仓一半", profit)
+                shares -= sell_shares
+                if shares == 0:
+                    avg_cost = 0.0
+                    position_layers = 0
+
+        buy_reason = None
+        entry_ratio = 0.0
+        if shares == 0 and close <= lower and trend_ok:
+            buy_reason = "触及下轨首笔建仓 25%"
+            entry_ratio = first_entry_ratio
+        elif shares > 0 and position_layers == 1 and close <= lower:
+            buy_reason = "再次回踩下轨加仓 20%"
+            entry_ratio = second_entry_ratio
+        elif shares > 0 and position_layers == 2 and close <= lower * (1 - third_entry_discount):
+            buy_reason = "较下轨再低 1% 时加仓 35%"
+            entry_ratio = third_entry_ratio
+
+        if buy_reason:
+            buy_shares = to_lot_shares(cash * entry_ratio, close)
+            if buy_shares >= 100:
+                cost = buy_shares * close
+                total_cost = avg_cost * shares + cost
+                shares += buy_shares
+                cash -= cost
+                avg_cost = total_cost / shares
+                position_layers += 1
+                record_trade(trades, data["date"], "BUY", close, buy_shares, buy_reason)
+
+        current_equity = cash + shares * close
+        equity_curve.append({
+            "date": data["date"],
+            "equity": current_equity
+        })
+        peak_equity = max(peak_equity, current_equity)
+        drawdown = (peak_equity - current_equity) / peak_equity if peak_equity > 0 else 0
+        max_drawdown = max(max_drawdown, drawdown)
+
+    if shares > 0 and bollinger_data:
+        last_close = bollinger_data[-1]["close"]
+        if last_close:
+            sell_shares = shares
+            cash += sell_shares * last_close
+            profit = (last_close - avg_cost) * sell_shares
+            record_trade(
+                trades,
+                bollinger_data[-1]["date"],
+                "SELL",
+                last_close,
+                sell_shares,
+                "样本结束平仓",
+                profit,
+            )
+            shares = 0
+
+    final_capital = cash
+    final_return_pct = ((final_capital - initial_capital) / initial_capital) * 100
+    win_trades = [t for t in trades if t["type"] == "SELL" and t["profit"] > 0]
+    sell_trades = [t for t in trades if t["type"] == "SELL"]
+    win_rate = (len(win_trades) / len(sell_trades) * 100) if sell_trades else 0
+
+    return {
+        "stock_code": stock_code,
+        "strategy": {
+            "name": "招商银行增强布林带分批策略",
+            "rules": [
+                "触及下轨且价格不低于 MA60 的 98% 时，首笔建仓 25%",
+                "再次回踩下轨时加仓 20%",
+                "较下轨再低 1% 时加仓 35%",
+                "回到中轨且浮盈超过 1% 时，减仓一半",
+                "触及上轨全部止盈，跌破持仓成本 5% 时止损",
+            ],
+            "params": {
+                "period": period,
+                "std_dev": std_dev,
+                "first_entry_ratio": first_entry_ratio,
+                "second_entry_ratio": second_entry_ratio,
+                "third_entry_ratio": third_entry_ratio,
+                "stop_loss_pct": stop_loss_pct,
+                "partial_take_profit_pct": partial_take_profit_pct,
+                "trend_tolerance": trend_tolerance,
+            }
+        },
+        "bollinger_data": bollinger_data,
+        "trades": trades,
+        "equity_curve": equity_curve,
+        "metrics": {
+            "initial_capital": initial_capital,
+            "final_capital": final_capital,
+            "total_return": final_capital - initial_capital,
+            "return_pct": final_return_pct,
+            "max_drawdown_pct": max_drawdown * 100,
+            "win_rate": win_rate,
+            "total_trades": len(sell_trades),
+            "buy_count": len([t for t in trades if t["type"] == "BUY"]),
+            "sell_count": len(sell_trades),
+        }
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
