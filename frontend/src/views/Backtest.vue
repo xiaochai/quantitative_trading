@@ -1,6 +1,5 @@
 <template>
   <div class="backtest-container">
-    <!-- 返回按钮 -->
     <div class="back-section">
       <button class="back-btn" @click="goBack">
         <span class="back-arrow">←</span>
@@ -8,18 +7,102 @@
       </button>
     </div>
 
-    <!-- 头部区域 -->
     <div class="header-section">
       <div class="header-glow"></div>
       <div class="header-content">
-        <h1>📊 增强布林带策略回测</h1>
+        <h1>📊 通用回测框架</h1>
         <p class="subtitle">
-          {{ backtestData?.strategy?.name || '招商银行增强布林带分批策略' }}
+          {{ backtestData?.strategy?.name || '支持多股票、多周期、多策略的统一回测入口' }}
         </p>
       </div>
     </div>
 
-    <!-- 加载状态 -->
+    <div class="config-card">
+      <div class="card-header">
+        <h3>⚙️ 回测配置</h3>
+      </div>
+      <div class="config-grid">
+        <div class="config-item stock-selector">
+          <label>股票</label>
+          <div class="stock-search-wrapper">
+            <input
+              v-model="stockKeyword"
+              type="text"
+              class="tech-input"
+              placeholder="输入股票代码或名称搜索"
+              @input="handleStockSearch"
+              @focus="handleStockSearch"
+            />
+            <div class="stock-dropdown" v-if="stockOptions.length > 0">
+              <button
+                v-for="stock in stockOptions"
+                :key="stock.stock_code"
+                class="stock-option"
+                @click="selectStock(stock)"
+              >
+                <span>{{ stock.stock_name }}</span>
+                <span>{{ stock.stock_code }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="selected-value" v-if="selectedStock">
+            已选：{{ selectedStock.stock_name }} / {{ selectedStock.stock_code }}
+          </div>
+        </div>
+
+        <div class="config-item">
+          <label>周期</label>
+          <select v-model="selectedPeriod" class="tech-select">
+            <option v-for="period in periodOptions" :key="period.id" :value="period.id">
+              {{ period.label }}
+            </option>
+          </select>
+        </div>
+
+        <div class="config-item">
+          <label>策略</label>
+          <select v-model="selectedStrategyId" class="tech-select">
+            <option v-for="strategy in strategies" :key="strategy.id" :value="strategy.id">
+              {{ strategy.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="config-item">
+          <label>初始资金</label>
+          <input v-model.number="initialCapital" type="number" min="10000" step="1000" class="tech-input" />
+        </div>
+      </div>
+
+      <div class="param-section" v-if="currentStrategy">
+        <div class="param-header">策略参数</div>
+        <div class="param-grid">
+          <div class="config-item" v-for="field in currentStrategy.param_schema" :key="field.key">
+            <label>{{ field.label }}</label>
+            <input
+              v-if="field.type === 'number'"
+              v-model.number="strategyParams[field.key]"
+              type="number"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step || 1"
+              class="tech-input"
+            />
+            <label v-else-if="field.type === 'boolean'" class="checkbox-label">
+              <input v-model="strategyParams[field.key]" type="checkbox" />
+              <span>{{ strategyParams[field.key] ? '开启' : '关闭' }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="run-btn" @click="runBacktest" :disabled="loading || !selectedStock || !selectedStrategyId">
+          {{ loading ? '回测中...' : '开始回测' }}
+        </button>
+      </div>
+    </div>
+
     <div class="loading-wrapper" v-if="loading">
       <div class="loader">
         <div class="loader-ring"></div>
@@ -30,13 +113,18 @@
     </div>
 
     <div v-else-if="backtestData">
-      <!-- 回测指标卡片 -->
+      <div class="summary-bar">
+        <span>标的：{{ backtestData.stock.stock_name }} / {{ backtestData.stock.stock_code }}</span>
+        <span>区间：{{ backtestData.start_date }} ~ {{ backtestData.end_date }}</span>
+        <span>周期：{{ currentPeriodLabel }}</span>
+      </div>
+
       <div class="metrics-section">
         <div class="metric-card metric-primary">
           <div class="metric-icon">💰</div>
           <div class="metric-content">
             <div class="metric-label">总收益率</div>
-            <div class="metric-value" :class="{'positive': backtestData.metrics.return_pct >= 0, 'negative': backtestData.metrics.return_pct < 0}">
+            <div class="metric-value" :class="valueClass(backtestData.metrics.return_pct)">
               {{ backtestData.metrics.return_pct.toFixed(2) }}%
             </div>
           </div>
@@ -45,15 +133,13 @@
           <div class="metric-icon">📈</div>
           <div class="metric-content">
             <div class="metric-label">最终资金</div>
-            <div class="metric-value">
-              ¥{{ backtestData.metrics.final_capital.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) }}
-            </div>
+            <div class="metric-value">¥{{ formatNumber(backtestData.metrics.final_capital) }}</div>
           </div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon">🎯</div>
+          <div class="metric-icon">🔁</div>
           <div class="metric-content">
-            <div class="metric-label">交易次数</div>
+            <div class="metric-label">完整交易次数</div>
             <div class="metric-value">{{ backtestData.metrics.total_trades }}</div>
           </div>
         </div>
@@ -62,6 +148,13 @@
           <div class="metric-content">
             <div class="metric-label">胜率</div>
             <div class="metric-value">{{ backtestData.metrics.win_rate.toFixed(2) }}%</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">🛒</div>
+          <div class="metric-content">
+            <div class="metric-label">买入次数</div>
+            <div class="metric-value">{{ backtestData.metrics.buy_count }}</div>
           </div>
         </div>
         <div class="metric-card metric-danger">
@@ -73,40 +166,35 @@
         </div>
       </div>
 
-      <!-- 策略说明 -->
       <div class="info-card">
         <div class="card-header">
           <h3>📋 策略说明</h3>
         </div>
+        <p class="strategy-description" v-if="backtestData.strategy.description">
+          {{ backtestData.strategy.description }}
+        </p>
         <div class="strategy-info">
-          <div
-            class="strategy-point"
-            v-for="(rule, index) in backtestData.strategy?.rules || []"
-            :key="index"
-          >
+          <div class="strategy-point" v-for="(rule, index) in backtestData.strategy.rules || []" :key="index">
             <span class="strategy-label">规则 {{ index + 1 }}：</span>
             <span class="strategy-value">{{ rule }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 布林带K线图 -->
       <div class="chart-card">
         <div class="chart-header">
-          <h3>📊 布林带K线图 & 买卖点</h3>
+          <h3>📊 K线图 & 策略信号</h3>
         </div>
-        <div ref="bollingerChart" class="chart-container" style="width: 100%; height: 450px;"></div>
+        <div ref="priceChart" class="chart-container"></div>
       </div>
 
-      <!-- 资金曲线图 -->
       <div class="chart-card">
         <div class="chart-header">
           <h3>📈 资金曲线</h3>
         </div>
-        <div ref="equityChart" class="chart-container" style="width: 100%; height: 450px;"></div>
+        <div ref="equityChart" class="chart-container"></div>
       </div>
 
-      <!-- 交易记录表格 -->
       <div class="chart-card" v-if="backtestData.trades.length > 0">
         <div class="chart-header">
           <h3>📋 交易记录</h3>
@@ -127,15 +215,15 @@
               <tr v-for="(trade, index) in backtestData.trades" :key="index">
                 <td class="date-cell">{{ trade.date }}</td>
                 <td>
-                  <span class="trade-type" :class="{'buy': trade.type === 'BUY', 'sell': trade.type === 'SELL'}">
+                  <span class="trade-type" :class="{ buy: trade.type === 'BUY', sell: trade.type === 'SELL' }">
                     {{ trade.type === 'BUY' ? '买入' : '卖出' }}
                   </span>
                 </td>
                 <td>{{ trade.reason || '-' }}</td>
                 <td>¥{{ trade.price.toFixed(2) }}</td>
                 <td>{{ trade.shares.toLocaleString() }}</td>
-                <td v-if="trade.profit !== undefined" :class="{'positive': trade.profit >= 0, 'negative': trade.profit < 0}">
-                  ¥{{ trade.profit.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) }}
+                <td v-if="trade.profit !== undefined" :class="valueClass(trade.profit)">
+                  ¥{{ formatNumber(trade.profit) }}
                 </td>
                 <td v-else>-</td>
               </tr>
@@ -147,90 +235,184 @@
 
     <div v-else class="empty-state">
       <div class="empty-icon">📭</div>
-      <p class="empty-text">暂无回测数据</p>
+      <p class="empty-text">请选择股票和策略后运行回测</p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 
 const router = useRouter()
 
 const loading = ref(false)
+const strategies = ref([])
+const periodOptions = ref([])
+const selectedStrategyId = ref('')
+const selectedPeriod = ref('1y')
+const initialCapital = ref(100000)
+const strategyParams = ref({})
+const stockKeyword = ref('招商银行')
+const stockOptions = ref([])
+const selectedStock = ref({ stock_code: '600036.SH', stock_name: '招商银行' })
 const backtestData = ref(null)
-const bollingerChart = ref(null)
+const priceChart = ref(null)
 const equityChart = ref(null)
-let bollingerChartInstance = null
+let priceChartInstance = null
 let equityChartInstance = null
+
+const currentStrategy = computed(() => strategies.value.find(item => item.id === selectedStrategyId.value) || null)
+const currentPeriodLabel = computed(() => {
+  return periodOptions.value.find(item => item.id === selectedPeriod.value)?.label || selectedPeriod.value
+})
 
 function goBack() {
   router.push({ name: 'Home' })
 }
 
-async function loadBacktestData() {
+function valueClass(value) {
+  return value >= 0 ? 'positive' : 'negative'
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+
+function applyStrategyDefaults(strategyId) {
+  const strategy = strategies.value.find(item => item.id === strategyId)
+  if (!strategy) return
+  strategyParams.value = { ...strategy.defaults }
+}
+
+async function fetchStrategies() {
+  const response = await fetch('/api/backtest/strategies')
+  const result = await response.json()
+  strategies.value = result.strategies || []
+  periodOptions.value = result.period_options || []
+  selectedStrategyId.value = result.default_strategy_id || strategies.value[0]?.id || ''
+  if (!selectedPeriod.value && periodOptions.value.length > 0) {
+    selectedPeriod.value = periodOptions.value[0].id
+  }
+  applyStrategyDefaults(selectedStrategyId.value)
+}
+
+async function handleStockSearch() {
+  const keyword = stockKeyword.value.trim()
+  if (!keyword) {
+    stockOptions.value = []
+    return
+  }
+  const response = await fetch(`/api/stocks?search=${encodeURIComponent(keyword)}`)
+  const result = await response.json()
+  stockOptions.value = (result || []).slice(0, 8)
+}
+
+function selectStock(stock) {
+  selectedStock.value = {
+    stock_code: stock.stock_code,
+    stock_name: stock.stock_name,
+  }
+  stockKeyword.value = `${stock.stock_name} ${stock.stock_code}`
+  stockOptions.value = []
+}
+
+async function runBacktest() {
+  if (!selectedStock.value || !selectedStrategyId.value) return
   loading.value = true
   try {
-    const response = await fetch('/api/backtest/bollinger?stock_code=600036.SH')
+    const response = await fetch('/api/backtest/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        stock_code: selectedStock.value.stock_code,
+        strategy_id: selectedStrategyId.value,
+        period: selectedPeriod.value,
+        initial_capital: initialCapital.value,
+        strategy_params: strategyParams.value,
+      }),
+    })
     const result = await response.json()
-    
-    if (result.error) {
-      throw new Error(result.error)
+    if (!response.ok || result.detail) {
+      throw new Error(result.detail || '回测失败')
     }
-    
     backtestData.value = result
   } catch (error) {
-    console.error('Failed to load backtest data:', error)
+    console.error('Failed to run backtest:', error)
   } finally {
     loading.value = false
   }
 }
 
-function renderCharts() {
-  renderBollingerChart()
-  renderEquityCurve()
-}
+function renderPriceChart() {
+  if (!priceChart.value || !backtestData.value?.price_data) return
+  if (priceChartInstance) {
+    priceChartInstance.dispose()
+  }
+  priceChartInstance = echarts.init(priceChart.value)
 
-function renderBollingerChart() {
-  if (!bollingerChart.value) {
-    return
-  }
-  
-  if (!backtestData.value || !backtestData.value.bollinger_data) {
-    return
-  }
-  
-  if (bollingerChartInstance) {
-    bollingerChartInstance.dispose()
-  }
-  
-  bollingerChartInstance = echarts.init(bollingerChart.value)
-  
-  const data = backtestData.value.bollinger_data
-  const dates = data.map(d => d.date)
-  const sma = data.map(d => d.sma)
-  const upper = data.map(d => d.upper)
-  const lower = data.map(d => d.lower)
-  const klineData = data.map(d => [d.open, d.close, d.low, d.high])
-  
-  // 找到买卖点
+  const data = backtestData.value.price_data
+  const dates = data.map(item => item.date)
+  const klineData = data.map(item => [item.open, item.close, item.low, item.high])
+  const overlays = backtestData.value.strategy?.chart_overlays || []
   const buyPoints = []
   const sellPoints = []
-  
+
   backtestData.value.trades.forEach(trade => {
-    const idx = dates.findIndex(d => d === trade.date)
-    if (idx !== -1) {
-      if (trade.type === 'BUY') {
-        buyPoints.push([idx, trade.price])
-      } else {
-        sellPoints.push([idx, trade.price])
-      }
+    const index = dates.findIndex(item => item === trade.date)
+    if (index === -1) return
+    if (trade.type === 'BUY') {
+      buyPoints.push([index, trade.price])
+    } else {
+      sellPoints.push([index, trade.price])
     }
   })
-  
-  const option = {
+
+  const series = [
+    {
+      name: 'K线',
+      type: 'candlestick',
+      data: klineData,
+      itemStyle: {
+        color: '#ff6b6b',
+        color0: '#00ff88',
+        borderColor: '#ff6b6b',
+        borderColor0: '#00ff88',
+      },
+    },
+    ...overlays.map(overlay => ({
+      name: overlay.label,
+      type: 'line',
+      data: data.map(item => item[overlay.key]),
+      smooth: true,
+      lineStyle: {
+        width: 1.5,
+        color: overlay.color,
+        type: overlay.lineStyle || 'solid',
+      },
+      showSymbol: false,
+    })),
+    {
+      name: '买入',
+      type: 'scatter',
+      data: buyPoints,
+      symbol: 'triangle',
+      symbolSize: 15,
+      itemStyle: { color: '#00ff88', borderWidth: 2, borderColor: '#fff' },
+    },
+    {
+      name: '卖出',
+      type: 'scatter',
+      data: sellPoints,
+      symbol: 'triangle',
+      symbolRotate: 180,
+      symbolSize: 15,
+      itemStyle: { color: '#ff6b6b', borderWidth: 2, borderColor: '#fff' },
+    },
+  ]
+
+  priceChartInstance.setOption({
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
@@ -238,123 +420,45 @@ function renderBollingerChart() {
       backgroundColor: 'rgba(15,23,42,0.95)',
       borderColor: 'rgba(0,212,255,0.3)',
       textStyle: { color: '#fff' },
-      borderWidth: 1
+      borderWidth: 1,
     },
     legend: {
-      data: ['K线', '中轨(SMA20)', '上轨', '下轨', '买入', '卖出'],
+      data: ['K线', ...overlays.map(item => item.label), '买入', '卖出'],
       textStyle: { color: '#98a2b3' },
-      top: 10
+      top: 10,
     },
-    grid: {
-      left: '10%',
-      right: '10%',
-      top: 60,
-      bottom: '10%'
-    },
+    grid: { left: '10%', right: '10%', top: 60, bottom: '10%' },
     xAxis: {
       type: 'category',
       data: dates,
       axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
       axisLabel: { color: '#667085' },
-      splitLine: { show: false }
+      splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
       scale: true,
       axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
       axisLabel: { color: '#667085' },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
     },
-    dataZoom: [
-      { type: 'inside', start: 0, end: 100 }
-    ],
-    series: [
-      {
-        name: 'K线',
-        type: 'candlestick',
-        data: klineData,
-        itemStyle: {
-          color: '#ff6b6b',
-          color0: '#00ff88',
-          borderColor: '#ff6b6b',
-          borderColor0: '#00ff88'
-        }
-      },
-      {
-        name: '中轨(SMA20)',
-        type: 'line',
-        data: sma,
-        smooth: true,
-        lineStyle: { width: 1.5, color: '#ffd93d' },
-        showSymbol: false
-      },
-      {
-        name: '上轨',
-        type: 'line',
-        data: upper,
-        smooth: true,
-        lineStyle: { width: 1, color: '#ff6b6b', type: 'dashed' },
-        showSymbol: false
-      },
-      {
-        name: '下轨',
-        type: 'line',
-        data: lower,
-        smooth: true,
-        lineStyle: { width: 1, color: '#00ff88', type: 'dashed' },
-        showSymbol: false
-      },
-      {
-        name: '买入',
-        type: 'scatter',
-        data: buyPoints,
-        symbol: 'triangle',
-        symbolSize: 15,
-        itemStyle: {
-          color: '#00ff88',
-          borderWidth: 2,
-          borderColor: '#fff'
-        }
-      },
-      {
-        name: '卖出',
-        type: 'scatter',
-        data: sellPoints,
-        symbol: 'triangle',
-        symbolRotate: 180,
-        symbolSize: 15,
-        itemStyle: {
-          color: '#ff6b6b',
-          borderWidth: 2,
-          borderColor: '#fff'
-        }
-      }
-    ]
-  }
-  
-  bollingerChartInstance.setOption(option)
+    dataZoom: [{ type: 'inside', start: 0, end: 100 }],
+    series,
+  })
 }
 
 function renderEquityCurve() {
-  if (!equityChart.value) {
-    return
-  }
-  
-  if (!backtestData.value || !backtestData.value.equity_curve) {
-    return
-  }
-  
+  if (!equityChart.value || !backtestData.value?.equity_curve) return
   if (equityChartInstance) {
     equityChartInstance.dispose()
   }
-  
   equityChartInstance = echarts.init(equityChart.value)
-  
+
   const data = backtestData.value.equity_curve
-  const dates = data.map(d => d.date)
-  const equity = data.map(d => d.equity)
-  
-  const option = {
+  const dates = data.map(item => item.date)
+  const equity = data.map(item => item.equity)
+
+  equityChartInstance.setOption({
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
@@ -365,37 +469,26 @@ function renderEquityCurve() {
       borderWidth: 1,
       formatter: params => {
         const value = params[0].value
-        return `${params[0].axisValue}<br/>资金: ¥${value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`
-      }
+        return `${params[0].axisValue}<br/>资金: ¥${formatNumber(value)}`
+      },
     },
-    legend: {
-      data: ['资金曲线'],
-      textStyle: { color: '#98a2b3' },
-      top: 10
-    },
-    grid: {
-      left: '10%',
-      right: '10%',
-      top: 60,
-      bottom: '10%'
-    },
+    legend: { data: ['资金曲线'], textStyle: { color: '#98a2b3' }, top: 10 },
+    grid: { left: '10%', right: '10%', top: 60, bottom: '10%' },
     xAxis: {
       type: 'category',
       data: dates,
       axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
       axisLabel: { color: '#667085' },
-      splitLine: { show: false }
+      splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
       scale: true,
       axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
       axisLabel: { color: '#667085' },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
     },
-    dataZoom: [
-      { type: 'inside', start: 0, end: 100 }
-    ],
+    dataZoom: [{ type: 'inside', start: 0, end: 100 }],
     series: [
       {
         name: '资金曲线',
@@ -406,43 +499,50 @@ function renderEquityCurve() {
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: 'rgba(0,212,255,0.3)' },
-            { offset: 1, color: 'rgba(0,212,255,0.05)' }
-          ])
+            { offset: 1, color: 'rgba(0,212,255,0.05)' },
+          ]),
         },
-        showSymbol: false
-      }
-    ]
-  }
-  
-  equityChartInstance.setOption(option)
+        showSymbol: false,
+      },
+    ],
+  })
+}
+
+function renderCharts() {
+  renderPriceChart()
+  renderEquityCurve()
 }
 
 function handleResize() {
-  bollingerChartInstance?.resize()
+  priceChartInstance?.resize()
   equityChartInstance?.resize()
 }
 
-onMounted(() => {
-  loadBacktestData()
-  window.addEventListener('resize', handleResize)
+watch(selectedStrategyId, value => {
+  if (value) {
+    applyStrategyDefaults(value)
+  }
 })
 
 watch(
   () => [loading.value, backtestData.value],
   async ([isLoading, data]) => {
-    if (isLoading || !data) {
-      return
-    }
-
+    if (isLoading || !data) return
     await nextTick()
     renderCharts()
   },
-  { flush: 'post' }
+  { flush: 'post' },
 )
+
+onMounted(async () => {
+  await fetchStrategies()
+  await runBacktest()
+  window.addEventListener('resize', handleResize)
+})
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  bollingerChartInstance?.dispose()
+  priceChartInstance?.dispose()
   equityChartInstance?.dispose()
 })
 </script>
@@ -459,24 +559,29 @@ onUnmounted(() => {
   margin-bottom: 2rem;
 }
 
+.back-btn,
+.run-btn,
+.stock-option {
+  cursor: pointer;
+}
+
 .back-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1.5rem;
-  background: rgba(15,23,42,0.8);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   color: #98a2b3;
   font-size: 0.875rem;
   font-weight: 500;
   letter-spacing: 1px;
-  cursor: pointer;
   transition: all 0.3s ease;
 }
 
 .back-btn:hover {
-  border-color: rgba(0,212,255,0.4);
+  border-color: rgba(0, 212, 255, 0.4);
   color: #00d4ff;
   transform: translateX(-4px);
 }
@@ -499,7 +604,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   width: 300px;
   height: 150px;
-  background: radial-gradient(circle, rgba(0,212,255,0.15) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(0, 212, 255, 0.15) 0%, transparent 70%);
   filter: blur(40px);
   pointer-events: none;
 }
@@ -522,19 +627,271 @@ onUnmounted(() => {
   margin-bottom: 0.5rem;
 }
 
+.subtitle {
+  color: #667085;
+  font-size: 0.875rem;
+  letter-spacing: 2px;
+}
+
 @keyframes gradientMove {
   0%, 100% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
 }
 
-.subtitle {
-  color: #667085;
-  font-size: 0.875rem;
-  letter-spacing: 3px;
-  text-transform: uppercase;
+.config-card,
+.info-card,
+.chart-card {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.7) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
 }
 
-.loading-wrapper {
+.card-header {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 1rem;
+}
+
+.card-header h3,
+.chart-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.1rem;
+}
+
+.config-grid,
+.param-grid,
+.metrics-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.config-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.config-item label,
+.param-header,
+.selected-value,
+.summary-bar,
+.strategy-description,
+.strategy-value,
+.data-table td {
+  color: #98a2b3;
+}
+
+.tech-input,
+.tech-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(2, 6, 23, 0.65);
+  color: #fff;
+  outline: none;
+}
+
+.tech-input:focus,
+.tech-select:focus {
+  border-color: rgba(0, 212, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.12);
+}
+
+.stock-search-wrapper {
+  position: relative;
+}
+
+.stock-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: rgba(2, 6, 23, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.stock-option {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  color: #e2e8f0;
+  background: transparent;
+  border: 0;
+}
+
+.stock-option:hover {
+  background: rgba(0, 212, 255, 0.08);
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.param-section {
+  margin-top: 1.5rem;
+}
+
+.action-row {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.run-btn {
+  padding: 0.9rem 1.6rem;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.24) 0%, rgba(0, 255, 136, 0.12) 100%);
+  color: #fff;
+  font-weight: 600;
+}
+
+.run-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.metrics-section {
+  margin-bottom: 2rem;
+}
+
+.metric-card {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0.6) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.metric-primary {
+  border-color: rgba(0, 212, 255, 0.3);
+}
+
+.metric-danger {
+  border-color: rgba(255, 107, 107, 0.25);
+}
+
+.metric-icon {
+  font-size: 2rem;
+}
+
+.metric-label {
+  color: #667085;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+
+.metric-value {
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.positive {
+  color: #00ff88;
+}
+
+.negative {
+  color: #ff6b6b;
+}
+
+.strategy-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.strategy-point {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.strategy-label {
+  color: #00d4ff;
+  font-weight: 600;
+}
+
+.chart-header {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 1rem;
+}
+
+.chart-container {
+  width: 100%;
+  height: 460px;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.data-table th {
+  padding: 1rem;
+  text-align: left;
+  color: #667085;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.data-table td {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.date-cell {
+  font-family: 'SF Mono', monospace;
+}
+
+.trade-type {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.trade-type.buy {
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.15);
+}
+
+.trade-type.sell {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.15);
+}
+
+.loading-wrapper,
+.empty-state {
   text-align: center;
   padding: 4rem;
 }
@@ -572,269 +929,8 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.loading-text {
-  color: #667085;
-  letter-spacing: 4px;
-  font-size: 0.875rem;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 4rem;
-}
-
-.empty-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
-  opacity: 0.5;
-}
-
+.loading-text,
 .empty-text {
   color: #667085;
-  font-size: 1.25rem;
-  margin-bottom: 0.5rem;
-  letter-spacing: 2px;
-}
-
-.metrics-section {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.metric-card {
-  position: relative;
-  background: linear-gradient(135deg, rgba(15,23,42,0.8) 0%, rgba(15,23,42,0.7) 100%);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-  padding: 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  transition: all 0.3s ease;
-  overflow: hidden;
-}
-
-.metric-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(0,212,255,0.3);
-}
-
-.metric-primary {
-  background: linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(0,255,136,0.1) 100%);
-  border-color: rgba(0,212,255,0.3);
-}
-
-.metric-danger {
-  background: linear-gradient(135deg, rgba(255,107,107,0.2) 0%, rgba(15,23,42,0.1) 100%);
-}
-
-.metric-icon {
-  font-size: 2.5rem;
-  filter: drop-shadow(0 0 10px rgba(0,212,255,0.3));
-}
-
-.metric-content {
-  flex: 1;
-}
-
-.metric-label {
-  color: #667085;
-  font-size: 0.75rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  margin-bottom: 0.5rem;
-}
-
-.metric-value {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: #fff;
-}
-
-.metric-value.positive {
-  color: #00ff88;
-}
-
-.metric-value.negative {
-  color: #ff6b6b;
-}
-
-.info-card {
-  background: linear-gradient(135deg, rgba(15,23,42,0.9) 0%, rgba(15,23,42,0.7) 100%);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-  transition: all 0.3s ease;
-}
-
-.info-card:hover {
-  border-color: rgba(0,212,255,0.3);
-}
-
-.card-header {
-  padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  margin-bottom: 1rem;
-}
-
-.card-header h3 {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #fff;
-  letter-spacing: 1px;
-  margin: 0;
-}
-
-.strategy-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.strategy-point {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.strategy-label {
-  color: #00d4ff;
-  font-weight: 600;
-}
-
-.strategy-value {
-  color: #98a2b3;
-}
-
-.chart-card {
-  position: relative;
-  background: linear-gradient(135deg, rgba(15,23,42,0.9) 0%, rgba(15,23,42,0.7) 100%);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-  margin-bottom: 2rem;
-  overflow: hidden;
-  transition: all 0.3s ease;
-}
-
-.chart-card:hover {
-  border-color: rgba(0,212,255,0.3);
-}
-
-.chart-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.5rem 1.5rem 0;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  padding-bottom: 1rem;
-  margin-bottom: 1rem;
-}
-
-.chart-header h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #fff;
-  letter-spacing: 1px;
-  margin: 0;
-}
-
-.chart-container {
-  width: 100%;
-  height: 450px;
-  min-height: 450px;
-  padding: 0 1.5rem 1.5rem;
-  box-sizing: border-box;
-}
-
-.table-container {
-  padding: 0 1.5rem 1.5rem;
-  max-height: 500px;
-  overflow-y: auto;
-}
-
-.table-container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.table-container::-webkit-scrollbar-track {
-  background: rgba(255,255,255,0.05);
-  border-radius: 3px;
-}
-
-.table-container::-webkit-scrollbar-thumb {
-  background: rgba(0,212,255,0.3);
-  border-radius: 3px;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.data-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: rgba(15,23,42,0.95);
-}
-
-.data-table th {
-  padding: 1rem;
-  text-align: left;
-  color: #667085;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  white-space: nowrap;
-}
-
-.data-table td {
-  padding: 0.875rem 1rem;
-  color: #98a2b3;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-  white-space: nowrap;
-}
-
-.data-table tbody tr:hover {
-  background: rgba(0,212,255,0.05);
-}
-
-.date-cell {
-  font-family: 'SF Mono', monospace;
-}
-
-.trade-type {
-  padding: 0.25rem 0.75rem;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 0.75rem;
-}
-
-.trade-type.buy {
-  background: rgba(0,255,136,0.2);
-  color: #00ff88;
-  border: 1px solid rgba(0,255,136,0.3);
-}
-
-.trade-type.sell {
-  background: rgba(255,107,107,0.2);
-  color: #ff6b6b;
-  border: 1px solid rgba(255,107,107,0.3);
-}
-
-.positive {
-  color: #00ff88;
-  font-weight: 600;
-}
-
-.negative {
-  color: #ff6b6b;
-  font-weight: 600;
 }
 </style>
