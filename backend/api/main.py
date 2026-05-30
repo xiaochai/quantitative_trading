@@ -3,6 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database.database import get_db
 from models.stock_data import DailyQuote, StockInfo, StockFundamental
+from portfolio import (
+    PortfolioBacktestRequest,
+    PortfolioPlanRequest,
+    execute_portfolio_backtest,
+    generate_portfolio_plan,
+    get_portfolio_strategy_catalog,
+)
 from strategies import BacktestRunRequest, execute_backtest, get_strategy_catalog
 import json
 
@@ -316,6 +323,21 @@ def get_bollinger_backtest(stock_code: str = "600036.SH", db: Session = Depends(
     # 兼容旧页面入口，内部走新的通用回测框架
     request = BacktestRunRequest(stock_code=stock_code, strategy_id="short_trend", period="1y")
     return execute_backtest(request, db)
+
+
+@app.get("/api/portfolio/strategies")
+def get_portfolio_strategies():
+    return get_portfolio_strategy_catalog()
+
+
+@app.post("/api/portfolio/backtest/run")
+def run_portfolio_backtest(request: PortfolioBacktestRequest, db: Session = Depends(get_db)):
+    return execute_portfolio_backtest(request, db)
+
+
+@app.post("/api/portfolio/plan")
+def get_portfolio_plan(request: PortfolioPlanRequest, db: Session = Depends(get_db)):
+    return generate_portfolio_plan(request, db)
 
 
 if __name__ == "__main__":

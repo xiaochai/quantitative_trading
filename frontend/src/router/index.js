@@ -3,6 +3,7 @@ import Home from '../views/Home.vue'
 import StockDetail from '../views/StockDetail.vue'
 import DataViewer from '../views/DataViewer.vue'
 import Backtest from '../views/Backtest.vue'
+import PortfolioBacktest from '../views/PortfolioBacktest.vue'
 
 const routes = [
   {
@@ -24,6 +25,11 @@ const routes = [
     path: '/backtest',
     name: 'Backtest',
     component: Backtest
+  },
+  {
+    path: '/portfolio-backtest',
+    name: 'PortfolioBacktest',
+    component: PortfolioBacktest
   }
 ]
 

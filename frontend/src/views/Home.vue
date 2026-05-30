@@ -46,6 +46,10 @@
         </button>
       </div>
       <div class="quick-actions">
+        <button @click="goToPortfolioBacktest" class="quick-action-btn">
+          <span class="btn-icon">🧭</span>
+          <span class="btn-text">组合轮动</span>
+        </button>
         <button @click="goToBacktest" class="quick-action-btn">
           <span class="btn-icon">📊</span>
           <span class="btn-text">策略回测</span>
@@ -182,6 +186,10 @@ function goToDataViewer() {
 
 function goToBacktest() {
   router.push({ name: 'Backtest' })
+}
+
+function goToPortfolioBacktest() {
+  router.push({ name: 'PortfolioBacktest' })
 }
 
 onMounted(() => {
