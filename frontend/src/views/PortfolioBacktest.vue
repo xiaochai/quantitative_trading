@@ -58,6 +58,14 @@
           <div class="config-item" v-for="field in currentStrategy.param_schema" :key="field.key">
             <label>{{ field.label }}</label>
             <input
+              v-if="field.type === 'boolean'"
+              v-model="strategyParams[field.key]"
+              type="checkbox"
+              :true-value="true"
+              :false-value="false"
+            />
+            <input
+              v-else
               v-model.number="strategyParams[field.key]"
               type="number"
               :min="field.min"
@@ -385,6 +393,36 @@
           </table>
         </div>
       </div>
+
+      <div class="chart-card full-span" v-if="planData.risk_orders && planData.risk_orders.length">
+        <div class="chart-header">
+          <h3>🧯 盘中风控单（止损）</h3>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>动作</th>
+                <th>股票</th>
+                <th>股数</th>
+                <th>止损触发价</th>
+                <th>限价</th>
+                <th>原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, index) in planData.risk_orders" :key="`${item.stock_code}-${item.action}-${index}`">
+                <td><span class="trade-type sell">{{ item.action }}</span></td>
+                <td>{{ item.stock_name }} / {{ item.stock_code }}</td>
+                <td>{{ item.shares.toLocaleString() }}</td>
+                <td>¥{{ item.stop_price.toFixed(2) }}</td>
+                <td>¥{{ item.limit_price.toFixed(2) }}</td>
+                <td>{{ item.reason }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -518,6 +556,7 @@ function renderEquityChart() {
   equityChartInstance = echarts.init(equityChartRef.value)
   const dates = portfolioData.value.equity_curve.map(item => item.date)
   const equity = portfolioData.value.equity_curve.map(item => item.equity)
+  const benchmarkEquity = (portfolioData.value.benchmark_curve || []).map(item => item.equity)
   const rebalances = portfolioData.value.rebalance_events.map(item => {
     const idx = dates.findIndex(date => date === item.signal_date)
     return idx >= 0 ? [idx, equity[idx]] : null
@@ -533,12 +572,19 @@ function renderEquityChart() {
       textStyle: { color: '#fff' },
       borderWidth: 1,
       formatter: params => {
-        const value = Array.isArray(params) ? params[0]?.value : params.value
-        return `${params[0].axisValue}<br/>资产: ¥${formatNumber(value)}`
+        if (!Array.isArray(params) || params.length === 0) return ''
+        const dateLabel = params[0].axisValue
+        const lines = params.map(item => {
+          const name = item.seriesName
+          const val = Array.isArray(item.value) ? item.value[1] : item.value
+          if (val === null || val === undefined) return `${name}: -`
+          return `${name}: ¥${formatNumber(val)}`
+        })
+        return `${dateLabel}<br/>${lines.join('<br/>')}`
       },
     },
     legend: {
-      data: ['资金曲线', '调仓节点'],
+      data: ['资金曲线', '沪深300基准', '调仓节点'],
       textStyle: { color: '#98a2b3' },
       top: 10,
     },
@@ -571,6 +617,14 @@ function renderEquityChart() {
             { offset: 1, color: 'rgba(0,212,255,0.05)' },
           ]),
         },
+        showSymbol: false,
+      },
+      {
+        name: '沪深300基准',
+        type: 'line',
+        data: benchmarkEquity.length === equity.length ? benchmarkEquity : [],
+        smooth: true,
+        lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' },
         showSymbol: false,
       },
       {

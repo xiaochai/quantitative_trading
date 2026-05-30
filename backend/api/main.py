@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database.database import get_db
-from models.stock_data import DailyQuote, StockInfo, StockFundamental
+from models.stock_data import DailyQuote, IndexDailyQuote, StockInfo, StockFundamental
 from portfolio import (
     PortfolioBacktestRequest,
     PortfolioPlanRequest,
@@ -226,6 +226,42 @@ def get_daily_quotes(page: int = 1, page_size: int = 1000, stock_code: str = Non
             "boll_lower": item.boll_lower
         })
     
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": result
+    }
+
+
+@app.get("/api/data/index_daily_quotes")
+def get_index_daily_quotes(page: int = 1, page_size: int = 1000, index_code: str = None, db: Session = Depends(get_db)):
+    """获取指数日线行情数据，按id逆序排列，分页，支持按指数代码筛选"""
+    from sqlalchemy import func
+
+    query = db.query(IndexDailyQuote)
+    if index_code:
+        query = query.filter(IndexDailyQuote.index_code == index_code)
+
+    offset = (page - 1) * page_size
+    total = query.with_entities(func.count(IndexDailyQuote.id)).scalar()
+    items = query.order_by(IndexDailyQuote.id.desc()).offset(offset).limit(page_size).all()
+
+    result = []
+    for item in items:
+        result.append({
+            "id": item.id,
+            "index_code": item.index_code,
+            "trade_date": item.trade_date.isoformat() if item.trade_date else None,
+            "open": item.open,
+            "close": item.close,
+            "high": item.high,
+            "low": item.low,
+            "volume": item.volume,
+            "amount": item.amount,
+            "change_pct": item.change_pct
+        })
+
     return {
         "total": total,
         "page": page,

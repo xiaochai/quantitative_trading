@@ -14,6 +14,7 @@
 | `batch_fetch_history_data.py` | 批量获取所有股票的历史数据和财务数据 |
 | `fetch_constituents.py` | 抓取指数成分股数据并更新 stock_info 表 |
 | `fetch_sw_industry.py` | 从 Excel 文件解析申万行业分类并更新 stock_info 表 |
+| `fetch_hs300_index.py` | 获取沪深300指数日线并存入 index_daily_quotes 表 |
 | `trading_calendar.py` | 交易日历管理 |
 
 ---
@@ -191,6 +192,28 @@ PYTHONPATH=. backend/.venv/bin/python backend/crawler/batch_fetch_history_data.p
 ### 运行方式
 ```bash
 PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_constituents.py
+```
+
+---
+
+## 6.1 `fetch_hs300_index.py` - 获取沪深300真实指数日线
+
+### 功能说明
+- 使用 `ak.stock_zh_index_daily_em(symbol='sh000300')` 获取沪深300指数日线数据
+- 保存到数据库表 `index_daily_quotes`
+- 用于组合回测页面的“沪深300指数基准曲线”，不再用成分股收益合成
+
+### 数据存储
+- 表：`index_daily_quotes`
+- `index_code` 固定为 `000300`
+
+### 运行方式
+```bash
+# 默认抓取近5年
+PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_hs300_index.py
+
+# 自定义时间范围
+PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_hs300_index.py 20200101 20260530
 ```
 
 ---

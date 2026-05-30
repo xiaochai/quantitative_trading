@@ -25,6 +25,13 @@
       </div>
       <div 
         class="tab" 
+        :class="{ active: activeTab === 'index_daily_quotes' }"
+        @click="switchTab('index_daily_quotes')"
+      >
+        指数行情
+      </div>
+      <div 
+        class="tab" 
         :class="{ active: activeTab === 'stock_fundamentals' }"
         @click="switchTab('stock_fundamentals')"
       >
@@ -46,7 +53,7 @@
         <input 
           type="text" 
           v-model="filterStockCode" 
-          placeholder="输入股票代码筛选 (如 600036.SH)，留空显示全部"
+          :placeholder="filterPlaceholder"
           @keyup.enter="applyFilter"
           class="filter-input"
         />
@@ -157,6 +164,18 @@ const tableColumns = computed(() => {
       { key: 'boll_middle', label: 'BOLL-中' },
       { key: 'boll_lower', label: 'BOLL-下' }
     ],
+    index_daily_quotes: [
+      { key: 'id', label: 'ID' },
+      { key: 'index_code', label: '指数代码' },
+      { key: 'trade_date', label: '交易日期' },
+      { key: 'open', label: '开盘' },
+      { key: 'close', label: '收盘' },
+      { key: 'high', label: '最高' },
+      { key: 'low', label: '最低' },
+      { key: 'volume', label: '成交量' },
+      { key: 'amount', label: '成交额' },
+      { key: 'change_pct', label: '涨跌幅' }
+    ],
     stock_fundamentals: [
       { key: 'id', label: 'ID' },
       { key: 'stock_code', label: '股票代码' },
@@ -189,9 +208,21 @@ const tableColumns = computed(() => {
 
 const apiEndpoints = {
   daily_quotes: '/api/data/daily_quotes',
+  index_daily_quotes: '/api/data/index_daily_quotes',
   stock_fundamentals: '/api/data/stock_fundamentals',
   stock_info: '/api/data/stock_info'
 }
+
+const filterParamName = computed(() => {
+  return activeTab.value === 'index_daily_quotes' ? 'index_code' : 'stock_code'
+})
+
+const filterPlaceholder = computed(() => {
+  if (activeTab.value === 'index_daily_quotes') {
+    return '输入指数代码筛选 (如 000300.SH)，留空显示全部'
+  }
+  return '输入股票代码筛选 (如 600036.SH)，留空显示全部'
+})
 
 function goBack() {
   router.push({ name: 'Home' })
@@ -219,7 +250,7 @@ async function loadData() {
     const endpoint = apiEndpoints[activeTab.value]
     let url = `${endpoint}?page=${currentPage.value}&page_size=${PAGE_SIZE}`
     if (filterStockCode.value) {
-      url += `&stock_code=${encodeURIComponent(filterStockCode.value)}`
+      url += `&${filterParamName.value}=${encodeURIComponent(filterStockCode.value)}`
     }
     const response = await fetch(url)
     const data = await response.json()

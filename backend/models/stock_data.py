@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Boolean, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Date, Boolean, Text, UniqueConstraint
 from database.database import Base
 
 class DailyQuote(Base):
@@ -33,6 +33,27 @@ class DailyQuote(Base):
     boll_upper = Column(Float)
     boll_middle = Column(Float)
     boll_lower = Column(Float)
+
+
+class IndexDailyQuote(Base):
+    __tablename__ = "index_daily_quotes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    index_code = Column(String, index=True, nullable=False)
+    trade_date = Column(Date, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('index_code', 'trade_date', name='uq_index_trade_date'),
+    )
+
+    open = Column(Float)
+    close = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    volume = Column(Integer)
+    amount = Column(Float)
+    change_pct = Column(Float)
+
 
 class StockFundamental(Base):
     __tablename__ = "stock_fundamentals"

@@ -168,16 +168,36 @@ def _build_metrics(initial_capital: float, final_capital: float, equity_curve: L
     }
 
 
+def _market_risk_off(signal_date: str, index_close_by_date: Dict[str, float], window: int) -> Optional[Dict[str, Any]]:
+    if window <= 1:
+        return None
+    idx_close = index_close_by_date.get(signal_date)
+    if idx_close is None:
+        return None
+    recent_dates = sorted([d for d in index_close_by_date.keys() if d <= signal_date])[-window:]
+    if len(recent_dates) < window:
+        return None
+    ma = sum(index_close_by_date[d] for d in recent_dates) / window
+    if idx_close <= ma:
+        return {'close': idx_close, 'ma': ma, 'window': window}
+    return None
+
+
 def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
     dates = context['dates']
     quotes_by_date = context['quotes_by_date']
     universe_meta = context['universe_meta']
+    index_close_by_date = context.get('hs300_index_close_by_date') or {}
     initial_capital = float(context['initial_capital'])
     max_positions = int(context['max_positions'])
     cash_reserve_ratio = float(context['cash_reserve_ratio'])
     keep_buffer = int(params['keep_buffer'])
     min_holding_days = int(params['min_holding_days'])
     stop_loss_pct = float(params['stop_loss_pct'])
+    enable_intraday_stop = bool(params.get('enable_intraday_stop'))
+    intraday_stop_loss_pct = float(params.get('intraday_stop_loss_pct') or 0.0)
+    enable_market_risk = bool(params.get('enable_market_risk_control'))
+    market_ma_window = int(params.get('market_ma_window') or 60)
 
     cash = initial_capital
     holdings: Dict[str, Dict[str, Any]] = {}
@@ -197,7 +217,8 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
         rankings = _score_universe(signal_quotes, universe_meta, params)
         latest_candidates = rankings[:10]
         ranking_map = {item['stock_code']: item for item in rankings}
-        target_codes = _build_target_codes(rankings, holdings, max_positions, keep_buffer)
+        market_risk = _market_risk_off(signal_date, index_close_by_date, market_ma_window) if enable_market_risk else None
+        target_codes = [] if market_risk else _build_target_codes(rankings, holdings, max_positions, keep_buffer)
         execute_date = dates[idx + 1]
         execute_quotes = quotes_by_date[execute_date]
 
@@ -217,7 +238,7 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
                 (close and close <= holding['cost_price'] * (1 - stop_loss_pct))
             )
             soft_exit = stock_code not in target_codes and holding_days >= min_holding_days
-            should_exit = hard_exit or soft_exit
+            should_exit = bool(market_risk) or hard_exit or soft_exit
             if not should_exit:
                 continue
             execute_quote = execute_quotes.get(stock_code)
@@ -237,7 +258,10 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
                 'price': round(open_price, 2),
                 'amount': round(proceeds, 2),
                 'profit': round(profit, 2),
-                'reason': _exit_reason(stock_code, target_codes, ranking_map, signal_quote),
+                'reason': (
+                    f"市场风控触发：沪深300收盘 {market_risk['close']:.2f} 跌破 MA{market_risk['window']} {market_risk['ma']:.2f}，清仓防回撤"
+                    if market_risk else _exit_reason(stock_code, target_codes, ranking_map, signal_quote)
+                ),
             })
 
         for item in sells:
@@ -247,7 +271,7 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
 
         available_slots = max_positions - len(holdings)
         buys = []
-        if available_slots > 0:
+        if available_slots > 0 and not market_risk:
             portfolio_value = _portfolio_value(cash, holdings, signal_quotes, 'close')
             target_position_value = portfolio_value * (1 - cash_reserve_ratio) / max_positions if max_positions else 0
             for candidate in rankings:
@@ -287,14 +311,51 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
                 if len(buys) >= available_slots:
                     break
 
-        if buys or sells:
+        stop_sells = []
+        if enable_intraday_stop and intraday_stop_loss_pct > 0:
+            for stock_code, holding in list(holdings.items()):
+                prev_quote = signal_quotes.get(stock_code)
+                if not prev_quote or not prev_quote.get('close'):
+                    continue
+                execute_quote = execute_quotes.get(stock_code)
+                if not execute_quote:
+                    continue
+                low_price = execute_quote.get('low')
+                open_price = execute_quote.get('open')
+                prev_close = float(prev_quote['close'])
+                stop_price = prev_close * (1 - intraday_stop_loss_pct)
+                if not low_price or stop_price <= 0:
+                    continue
+                if low_price > stop_price:
+                    continue
+                executed_price = open_price if open_price and open_price <= stop_price else stop_price
+                proceeds = holding['shares'] * executed_price
+                profit = (executed_price - holding['cost_price']) * holding['shares']
+                cash += proceeds
+                holdings.pop(stock_code, None)
+                stop_sells.append({
+                    'action': 'SELL',
+                    'signal_date': signal_date,
+                    'execute_date': execute_date,
+                    'stock_code': stock_code,
+                    'stock_name': holding['stock_name'],
+                    'shares': holding['shares'],
+                    'price': round(executed_price, 2),
+                    'amount': round(proceeds, 2),
+                    'profit': round(profit, 2),
+                    'reason': f"盘中止损触发：跌破前收 {prev_close:.2f} 的 {intraday_stop_loss_pct * 100:.2f}%（止损价 {stop_price:.2f}）",
+                })
+
+        trade_records.extend(stop_sells)
+
+        if buys or sells or stop_sells:
             rebalance_events.append({
                 'signal_date': signal_date,
                 'execute_date': execute_date,
                 'buy_count': len(buys),
-                'sell_count': len(sells),
+                'sell_count': len(sells) + len(stop_sells),
                 'buy_stocks': [f"{item['stock_name']}({item['stock_code']})" for item in buys],
-                'sell_stocks': [f"{item['stock_name']}({item['stock_code']})" for item in sells],
+                'sell_stocks': [f"{item['stock_name']}({item['stock_code']})" for item in sells + stop_sells],
                 'top_candidates': [f"{item['stock_name']}({item['stock_code']})" for item in rankings[:max_positions]],
             })
 
@@ -314,7 +375,10 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
         'trade_records': trade_records,
         'rebalance_events': rebalance_events,
         'latest_candidates': latest_candidates,
-        'analysis': build_analysis_lines(metrics, latest_candidates),
+        'analysis': [
+            f"市场风控：{'开启' if enable_market_risk else '关闭'}（沪深300 跌破 MA{market_ma_window} 时，下一交易日清仓并停止开新仓）。",
+            *build_analysis_lines(metrics, latest_candidates),
+        ],
         'final_holdings': list(holdings.values()),
     }
 
@@ -325,6 +389,7 @@ def build_plan(context: Dict[str, Any], params: Dict[str, Any], holdings_input: 
     quotes_by_date = context['quotes_by_date']
     signal_quotes = quotes_by_date[signal_date]
     universe_meta = context['universe_meta']
+    index_close_by_date = context.get('hs300_index_close_by_date') or {}
     rankings = _score_universe(signal_quotes, universe_meta, params)
     ranking_map = {item['stock_code']: item for item in rankings}
 
@@ -344,12 +409,17 @@ def build_plan(context: Dict[str, Any], params: Dict[str, Any], holdings_input: 
     max_positions = int(context['max_positions'])
     cash_reserve_ratio = float(context['cash_reserve_ratio'])
     keep_buffer = int(params['keep_buffer'])
-    target_codes = _build_target_codes(rankings, current_holdings, max_positions, keep_buffer)
+    enable_market_risk = bool(params.get('enable_market_risk_control'))
+    market_ma_window = int(params.get('market_ma_window') or 60)
+    market_risk = _market_risk_off(signal_date, index_close_by_date, market_ma_window) if enable_market_risk else None
+    target_codes = [] if market_risk else _build_target_codes(rankings, current_holdings, max_positions, keep_buffer)
 
     latest_equity = _portfolio_value(current_cash, current_holdings, signal_quotes, 'close')
     target_position_value = latest_equity * (1 - cash_reserve_ratio) / max_positions if max_positions else 0
     sell_limit_buffer = float(params['sell_limit_buffer'])
     buy_limit_buffer = float(params['buy_limit_buffer'])
+    enable_intraday_stop = bool(params.get('enable_intraday_stop'))
+    intraday_stop_loss_pct = float(params.get('intraday_stop_loss_pct') or 0.0)
 
     next_day_actions = []
     estimated_cash = current_cash
@@ -368,12 +438,15 @@ def build_plan(context: Dict[str, Any], params: Dict[str, Any], holdings_input: 
                 'shares': holding['shares'],
                 'reference_price': reference_price,
                 'reference_amount': round(holding['shares'] * reference_price, 2),
-                'reason': _exit_reason(stock_code, target_codes, ranking_map, signal_quote),
+                'reason': (
+                    f"市场风控触发：沪深300收盘 {market_risk['close']:.2f} 跌破 MA{market_risk['window']} {market_risk['ma']:.2f}，建议卖出规避回撤"
+                    if market_risk else _exit_reason(stock_code, target_codes, ranking_map, signal_quote)
+                ),
             })
 
     remaining_holdings = {code: data for code, data in current_holdings.items() if code in target_codes}
     open_slots = max_positions - len(remaining_holdings)
-    if open_slots > 0:
+    if open_slots > 0 and not market_risk:
         for candidate in rankings:
             if candidate['stock_code'] in remaining_holdings or candidate['stock_code'] not in target_codes:
                 continue
@@ -411,6 +484,31 @@ def build_plan(context: Dict[str, Any], params: Dict[str, Any], holdings_input: 
             'reason': '继续保留在目标组合内',
         })
 
+    risk_orders = []
+    if enable_intraday_stop and intraday_stop_loss_pct > 0:
+        planned_sell_codes = {item['stock_code'] for item in next_day_actions if item['action'] == 'SELL'}
+        for stock_code, holding in current_holdings.items():
+            if stock_code in planned_sell_codes:
+                continue
+            signal_quote = signal_quotes.get(stock_code)
+            close_price = signal_quote.get('close') if signal_quote else None
+            anchor_price = safe_float(close_price, 0.0) or float(holding.get('cost_price') or 0)
+            if anchor_price <= 0 or holding['shares'] <= 0:
+                continue
+            stop_price = round(anchor_price * (1 - intraday_stop_loss_pct), 2)
+            limit_price = round(stop_price * (1 - sell_limit_buffer), 2)
+            if stop_price <= 0 or limit_price <= 0:
+                continue
+            risk_orders.append({
+                'action': 'STOP_SELL',
+                'stock_code': stock_code,
+                'stock_name': holding['stock_name'],
+                'shares': holding['shares'],
+                'stop_price': stop_price,
+                'limit_price': limit_price,
+                'reason': f"盘中止损 {intraday_stop_loss_pct * 100:.2f}%（基于前收 {safe_float(close_price, 0.0):.2f}）",
+            })
+
     return {
         'signal_date': signal_date,
         'plan_date': context['next_plan_date'],
@@ -418,10 +516,13 @@ def build_plan(context: Dict[str, Any], params: Dict[str, Any], holdings_input: 
         'target_codes': target_codes,
         'keep_positions': keep_positions,
         'next_day_actions': next_day_actions,
+        'risk_orders': risk_orders,
         'estimated_cash_after_orders': round(estimated_cash, 2),
         'analysis': [
+            f"市场风控：{'开启' if enable_market_risk else '关闭'}（沪深300 跌破 MA{market_ma_window} 时，下一交易日优先卖出并暂停开新仓）。",
             f"收盘后候选前 {max_positions} 名将作为下一交易日的目标组合。",
             f"结合当前持仓和资金，预计需要处理 {len(next_day_actions)} 笔委托。",
+            f"盘中止损：{'已开启' if enable_intraday_stop else '未开启'}（比例 {intraday_stop_loss_pct * 100:.2f}%）。",
         ],
     }
 
@@ -437,13 +538,17 @@ STRATEGY = {
         '已有持仓若仍处于较优排名则继续持有，否则在下一交易日开盘前计划卖出。',
     ],
     'param_schema': [
+        {'key': 'enable_market_risk_control', 'label': '启用市场风控', 'type': 'boolean', 'default': False},
+        {'key': 'market_ma_window', 'label': '市场风控均线', 'type': 'number', 'default': 60, 'min': 20, 'max': 250, 'step': 5},
         {'key': 'score_threshold', 'label': '最低得分', 'type': 'number', 'default': 55, 'min': 20, 'max': 100, 'step': 1},
         {'key': 'min_rsi', 'label': '最小 RSI', 'type': 'number', 'default': 48, 'min': 20, 'max': 80, 'step': 1},
         {'key': 'max_rsi', 'label': '最大 RSI', 'type': 'number', 'default': 75, 'min': 40, 'max': 95, 'step': 1},
         {'key': 'min_listed_days', 'label': '最短上市天数', 'type': 'number', 'default': 120, 'min': 30, 'max': 500, 'step': 10},
         {'key': 'keep_buffer', 'label': '持仓缓冲名次', 'type': 'number', 'default': 3, 'min': 0, 'max': 10, 'step': 1},
         {'key': 'min_holding_days', 'label': '最短持有天数', 'type': 'number', 'default': 10, 'min': 1, 'max': 30, 'step': 1},
-        {'key': 'stop_loss_pct', 'label': '止损比例', 'type': 'number', 'default': 0.08, 'min': 0.01, 'max': 0.2, 'step': 0.01},
+        {'key': 'stop_loss_pct', 'label': '收盘止损比例', 'type': 'number', 'default': 0.08, 'min': 0.01, 'max': 0.2, 'step': 0.01},
+        {'key': 'enable_intraday_stop', 'label': '启用盘中止损单', 'type': 'boolean', 'default': False},
+        {'key': 'intraday_stop_loss_pct', 'label': '盘中止损比例', 'type': 'number', 'default': 0.06, 'min': 0.01, 'max': 0.2, 'step': 0.01},
         {'key': 'buy_limit_buffer', 'label': '买入挂单上浮', 'type': 'number', 'default': 0.01, 'min': 0.0, 'max': 0.05, 'step': 0.005},
         {'key': 'sell_limit_buffer', 'label': '卖出挂单下浮', 'type': 'number', 'default': 0.01, 'min': 0.0, 'max': 0.05, 'step': 0.005},
     ],

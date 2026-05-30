@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from models.stock_data import DailyQuote, StockInfo
+from models.stock_data import DailyQuote, IndexDailyQuote, StockInfo
 from portfolio.registry import (
     DEFAULT_STRATEGY_ID,
     DEFAULT_UNIVERSE_ID,
@@ -47,6 +47,73 @@ class PortfolioPlanRequest(BaseModel):
     current_cash: float = 0.0
     holdings: List[HoldingInput] = Field(default_factory=list)
     strategy_params: Dict[str, Any] = Field(default_factory=dict)
+
+
+def load_hs300_index_close_map(dates: List[str], db: Session, lookback_days: int = 260) -> Dict[str, float]:
+    if not dates:
+        return {}
+    start = date.fromisoformat(dates[0]) - timedelta(days=lookback_days)
+    end = date.fromisoformat(dates[-1])
+    rows = db.query(IndexDailyQuote).filter(
+        IndexDailyQuote.index_code == '000300',
+        IndexDailyQuote.trade_date >= start,
+        IndexDailyQuote.trade_date <= end,
+    ).order_by(IndexDailyQuote.trade_date).all()
+    close_map: Dict[str, float] = {}
+    for item in rows:
+        if item.close is None:
+            continue
+        close_map[item.trade_date.isoformat()] = float(item.close)
+    return close_map
+
+
+def build_hs300_benchmark_curve(
+    dates: List[str],
+    db: Session,
+    initial_capital: float,
+) -> Dict[str, Any]:
+    if not dates:
+        return {
+            'benchmark': {'id': 'hs300', 'label': '沪深300', 'method': 'unavailable'},
+            'benchmark_curve': [],
+        }
+
+    start = date.fromisoformat(dates[0])
+    end = date.fromisoformat(dates[-1])
+    rows = db.query(IndexDailyQuote).filter(
+        IndexDailyQuote.index_code == '000300',
+        IndexDailyQuote.trade_date >= (start - timedelta(days=20)),
+        IndexDailyQuote.trade_date <= end,
+    ).order_by(IndexDailyQuote.trade_date).all()
+
+    if not rows:
+        return {
+            'benchmark': {'id': 'hs300', 'label': '沪深300', 'method': 'unavailable'},
+            'benchmark_curve': [],
+        }
+
+    close_map: Dict[str, float] = {}
+    for item in rows:
+        if item.close is None:
+            continue
+        close_map[item.trade_date.isoformat()] = float(item.close)
+
+    value = float(initial_capital)
+    curve = []
+    prev_close = None
+    for d in dates:
+        close = close_map.get(d)
+        if close is not None:
+            if prev_close is not None and prev_close != 0:
+                value *= (close / prev_close)
+            prev_close = close
+        curve.append({'date': d, 'equity': round(value, 2)})
+
+    method = 'index_close'
+    return {
+        'benchmark': {'id': 'hs300', 'label': '沪深300', 'method': method},
+        'benchmark_curve': curve,
+    }
 
 
 def _latest_stock_info_query(db: Session):
@@ -176,9 +243,11 @@ def execute_portfolio_backtest(request: PortfolioBacktestRequest, db: Session) -
     universe_members = get_universe_members(request.universe_id, db)
     quotes = load_universe_quotes(request, universe_members, db)
     context = build_market_context(quotes, universe_members, request.max_positions, request.cash_reserve_ratio, request.initial_capital)
+    context['hs300_index_close_by_date'] = load_hs300_index_close_map(context['dates'], db, lookback_days=420)
     strategy = PORTFOLIO_STRATEGIES[request.strategy_id]
     params = {**get_strategy_defaults(request.strategy_id), **request.strategy_params}
     result = strategy['runner'](context, params)
+    benchmark = build_hs300_benchmark_curve(context['dates'], db, request.initial_capital)
     return {
         'universe': {
             'id': request.universe_id,
@@ -192,6 +261,7 @@ def execute_portfolio_backtest(request: PortfolioBacktestRequest, db: Session) -
         'period': request.period,
         'start_date': context['dates'][0],
         'end_date': context['dates'][-1],
+        **benchmark,
         **result,
     }
 
@@ -207,6 +277,7 @@ def generate_portfolio_plan(request: PortfolioPlanRequest, db: Session) -> Dict[
     latest_date = quotes[-1].trade_date
     recent_quotes = [item for item in quotes if item.trade_date >= latest_date - timedelta(days=370)]
     context = build_market_context(recent_quotes, universe_members, request.max_positions, request.cash_reserve_ratio, 0.0)
+    context['hs300_index_close_by_date'] = load_hs300_index_close_map(context['dates'], db, lookback_days=420)
     strategy = PORTFOLIO_STRATEGIES[request.strategy_id]
     params = {**get_strategy_defaults(request.strategy_id), **request.strategy_params}
     plan = strategy['planner'](context, params, [item.model_dump() for item in request.holdings], request.current_cash)

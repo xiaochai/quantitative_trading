@@ -26,6 +26,6 @@ def get_db():
 
 def init_db():
     """初始化数据库表"""
-    from models.stock_data import DailyQuote, StockInfo, StockFundamental
+    from models.stock_data import DailyQuote, IndexDailyQuote, StockInfo, StockFundamental
     Base.metadata.create_all(bind=engine)
     print("数据库表初始化完成")
