@@ -39,6 +39,26 @@
       </div>
     </div>
 
+    <!-- 筛选区域 -->
+    <div class="filter-section">
+      <div class="filter-wrapper">
+        <div class="filter-glow"></div>
+        <input 
+          type="text" 
+          v-model="filterStockCode" 
+          placeholder="输入股票代码筛选 (如 600036.SH)，留空显示全部"
+          @keyup.enter="applyFilter"
+          class="filter-input"
+        />
+        <button @click="applyFilter" class="filter-btn">
+          <span class="btn-text">筛选</span>
+        </button>
+        <button @click="clearFilter" class="clear-btn">
+          <span class="btn-text">清除</span>
+        </button>
+      </div>
+    </div>
+
     <div class="content-section">
       <div class="loading-wrapper" v-if="loading">
         <div class="loader">
@@ -104,6 +124,7 @@ const loading = ref(false)
 const currentPage = ref(1)
 const total = ref(0)
 const tableData = ref([])
+const filterStockCode = ref('')
 const PAGE_SIZE = 1000
 
 const totalPages = computed(() => Math.ceil(total.value / PAGE_SIZE))
@@ -196,7 +217,11 @@ async function loadData() {
   loading.value = true
   try {
     const endpoint = apiEndpoints[activeTab.value]
-    const response = await fetch(`${endpoint}?page=${currentPage.value}&page_size=${PAGE_SIZE}`)
+    let url = `${endpoint}?page=${currentPage.value}&page_size=${PAGE_SIZE}`
+    if (filterStockCode.value) {
+      url += `&stock_code=${encodeURIComponent(filterStockCode.value)}`
+    }
+    const response = await fetch(url)
     const data = await response.json()
     total.value = data.total
     tableData.value = data.items
@@ -216,6 +241,17 @@ function switchTab(tab) {
 function changePage(page) {
   if (page < 1 || page > totalPages.value) return
   currentPage.value = page
+  loadData()
+}
+
+function applyFilter() {
+  currentPage.value = 1
+  loadData()
+}
+
+function clearFilter() {
+  filterStockCode.value = ''
+  currentPage.value = 1
   loadData()
 }
 
@@ -341,6 +377,86 @@ onMounted(() => {
   background: linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(0,255,136,0.1) 100%);
   border-color: rgba(0,212,255,0.5);
   color: #fff;
+}
+
+.filter-section {
+  margin-bottom: 2rem;
+}
+
+.filter-wrapper {
+  position: relative;
+  display: flex;
+  gap: 1rem;
+  max-width: 1000px;
+}
+
+.filter-glow {
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(90deg, #00d4ff, #00ff88, #00d4ff);
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  filter: blur(4px);
+  z-index: 0;
+}
+
+.filter-wrapper:focus-within .filter-glow {
+  opacity: 0.5;
+}
+
+.filter-input {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  padding: 1rem 1.5rem;
+  background: rgba(15,23,42,0.8);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 1rem;
+  outline: none;
+  transition: all 0.3s;
+}
+
+.filter-input:focus {
+  border-color: rgba(0,212,255,0.5);
+}
+
+.filter-input::placeholder {
+  color: #475467;
+}
+
+.filter-btn,
+.clear-btn {
+  position: relative;
+  z-index: 1;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #00d4ff 0%, #00a3cc 100%);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.filter-btn:hover,
+.clear-btn:hover {
+  transform: scale(1.02);
+  box-shadow: 0 0 30px rgba(0,212,255,0.4);
+}
+
+.clear-btn {
+  background: rgba(15,23,42,0.8);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.clear-btn:hover {
+  box-shadow: none;
+  border-color: rgba(0,212,255,0.4);
 }
 
 .content-section {

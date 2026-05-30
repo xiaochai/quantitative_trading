@@ -67,6 +67,13 @@
             <span class="info-value">{{ stockInfo.listed_date || '-' }}</span>
           </div>
         </div>
+        <!-- 成分标签 -->
+        <div class="component-tags-section" v-if="stockInfo.component_tags && stockInfo.component_tags.length > 0">
+          <span class="info-label">成分指数(Indices)</span>
+          <div class="component-tags">
+            <span class="component-tag" v-for="(tag, index) in stockInfo.component_tags" :key="index">{{ tag }}</span>
+          </div>
+        </div>
       </div>
 
       <!-- 统计卡片 -->
@@ -954,6 +961,39 @@ onMounted(() => {
 
 .info-value.danger {
   color: #ff6b6b;
+}
+
+/* 成分标签 */
+.component-tags-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.component-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.component-tag {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(0,255,136,0.1) 100%);
+  border: 1px solid rgba(0,212,255,0.3);
+  border-radius: 8px;
+  color: #00d4ff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+}
+
+.component-tag:hover {
+  border-color: rgba(0,255,136,0.5);
+  color: #00ff88;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,212,255,0.2);
 }
 
 /* 统计卡片 */

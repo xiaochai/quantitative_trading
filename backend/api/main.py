@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database.database import get_db
 from models.stock_data import DailyQuote, StockInfo, StockFundamental
 from datetime import date
+import json
 
 app = FastAPI()
 
@@ -85,54 +86,89 @@ def get_stock_info(stock_code: str, db: Session = Depends(get_db)):
             "is_st": info.is_st,
             "is_star_st": info.is_star_st,
             "is_delisted": info.is_delisted,
-            "listed_date": info.listed_date.isoformat() if info.listed_date else None
+            "listed_date": info.listed_date.isoformat() if info.listed_date else None,
+            "component_tags": json.loads(info.component_tags) if info.component_tags else []
         }
     return None
 
 @app.get("/api/stocks")
-def get_all_stocks(db: Session = Depends(get_db)):
-    # 从 daily_quotes 表获取所有有数据的股票
+def get_all_stocks(
+    index: str = None,
+    search: str = None,
+    db: Session = Depends(get_db)
+):
+    """
+    获取股票列表
+    
+    Args:
+        index: 指数名称，如 '沪深300'，不传则返回所有股票
+        search: 搜索关键词，支持股票代码或名称模糊搜索
+    """
     from sqlalchemy import distinct, func, or_
     
-    # 获取每个股票的最新数据日期
-    subquery = db.query(
-        DailyQuote.stock_code,
-        func.max(DailyQuote.trade_date).label('latest_date')
-    ).group_by(DailyQuote.stock_code).subquery()
+    # 先获取所有股票的最新信息（以 stock_info 表为准）
+    # 获取每个股票最新的 report_date
+    subquery_info = db.query(
+        StockInfo.stock_code,
+        func.max(StockInfo.report_date).label('latest_report_date')
+    ).group_by(StockInfo.stock_code).subquery()
     
-    # 关联查询获取最新数据
-    # 使用 distinct 去重，或者先获取去重的 stock_code
-    stock_codes = db.query(distinct(DailyQuote.stock_code)).all()
+    # 获取每个股票最新的 stock_info
+    query = db.query(StockInfo).join(
+        subquery_info,
+        (StockInfo.stock_code == subquery_info.c.stock_code) &
+        (StockInfo.report_date == subquery_info.c.latest_report_date)
+    )
+    
+    # 如果指定了指数，筛选成分股
+    if index:
+        # component_tags 是 JSON 格式的数组，需要解析
+        # 这里我们使用 like 查询来匹配
+        query = query.filter(StockInfo.component_tags.like(f'%"{index}"%'))
+    
+    # 如果有搜索关键词，模糊匹配股票代码或名称
+    if search:
+        search = search.strip()
+        query = query.filter(
+            or_(
+                StockInfo.stock_code.like(f'%{search}%'),
+                StockInfo.stock_name.like(f'%{search}%')
+            )
+        )
+    
+    stock_info_list = query.all()
+    
     result = []
-    
-    for (code,) in stock_codes:
-        # 获取每个股票的最新数据
+    for stock_info in stock_info_list:
+        # 获取该股票的最新行情数据
         latest_quote = db.query(DailyQuote).filter(
-            DailyQuote.stock_code == code
+            DailyQuote.stock_code == stock_info.stock_code
         ).order_by(DailyQuote.trade_date.desc()).first()
         
-        # 获取股票信息（按 report_date 倒序取最新）
-        stock_info = db.query(StockInfo).filter(
-            StockInfo.stock_code == code
-        ).order_by(StockInfo.report_date.desc()).first()
-        
-        if latest_quote:
-            result.append({
-                "stock_code": latest_quote.stock_code,
-                "stock_name": stock_info.stock_name if stock_info else latest_quote.stock_code,
-                "latest_close": latest_quote.close,
-                "change_pct": latest_quote.change_pct,
-                "latest_date": latest_quote.trade_date.isoformat() if latest_quote.trade_date else None
-            })
+        result.append({
+            "stock_code": stock_info.stock_code,
+            "stock_name": stock_info.stock_name,
+            "industry_sw1": stock_info.industry_sw1,
+            "industry_sw2": stock_info.industry_sw2,
+            "is_st": stock_info.is_st,
+            "is_star_st": stock_info.is_star_st,
+            "component_tags": json.loads(stock_info.component_tags) if stock_info.component_tags else [],
+            "latest_close": latest_quote.close if latest_quote else None,
+            "change_pct": latest_quote.change_pct if latest_quote else None,
+            "latest_date": latest_quote.trade_date.isoformat() if latest_quote and latest_quote.trade_date else None
+        })
     
     return result
 
 @app.get("/api/stocks/summary")
 def get_stocks_summary(db: Session = Depends(get_db)):
-    # 获取股票总数和最近数据日期
+    # 获取股票总数（以 stock_info 表为准）
     from sqlalchemy import distinct, func
     
-    stock_count = db.query(func.count(distinct(DailyQuote.stock_code))).scalar()
+    # 获取股票总数（每个股票只算一次，取最新的）
+    stock_count = db.query(func.count(distinct(StockInfo.stock_code))).scalar()
+    
+    # 获取最新数据日期
     latest_date = db.query(func.max(DailyQuote.trade_date)).scalar()
     
     return {
@@ -142,13 +178,17 @@ def get_stocks_summary(db: Session = Depends(get_db)):
 
 
 @app.get("/api/data/daily_quotes")
-def get_daily_quotes(page: int = 1, page_size: int = 1000, db: Session = Depends(get_db)):
-    """获取日线行情数据，按id逆序排列，分页"""
+def get_daily_quotes(page: int = 1, page_size: int = 1000, stock_code: str = None, db: Session = Depends(get_db)):
+    """获取日线行情数据，按id逆序排列，分页，支持按股票代码筛选"""
     from sqlalchemy import func
     
+    query = db.query(DailyQuote)
+    if stock_code:
+        query = query.filter(DailyQuote.stock_code == stock_code)
+    
     offset = (page - 1) * page_size
-    total = db.query(func.count(DailyQuote.id)).scalar()
-    items = db.query(DailyQuote).order_by(DailyQuote.id.desc()).offset(offset).limit(page_size).all()
+    total = query.with_entities(func.count(DailyQuote.id)).scalar()
+    items = query.order_by(DailyQuote.id.desc()).offset(offset).limit(page_size).all()
     
     result = []
     for item in items:
@@ -188,13 +228,17 @@ def get_daily_quotes(page: int = 1, page_size: int = 1000, db: Session = Depends
 
 
 @app.get("/api/data/stock_fundamentals")
-def get_stock_fundamentals(page: int = 1, page_size: int = 1000, db: Session = Depends(get_db)):
-    """获取股票基本面数据，按id逆序排列，分页"""
+def get_stock_fundamentals(page: int = 1, page_size: int = 1000, stock_code: str = None, db: Session = Depends(get_db)):
+    """获取股票基本面数据，按id逆序排列，分页，支持按股票代码筛选"""
     from sqlalchemy import func
     
+    query = db.query(StockFundamental)
+    if stock_code:
+        query = query.filter(StockFundamental.stock_code == stock_code)
+    
     offset = (page - 1) * page_size
-    total = db.query(func.count(StockFundamental.id)).scalar()
-    items = db.query(StockFundamental).order_by(StockFundamental.id.desc()).offset(offset).limit(page_size).all()
+    total = query.with_entities(func.count(StockFundamental.id)).scalar()
+    items = query.order_by(StockFundamental.id.desc()).offset(offset).limit(page_size).all()
     
     result = []
     for item in items:
@@ -220,13 +264,17 @@ def get_stock_fundamentals(page: int = 1, page_size: int = 1000, db: Session = D
 
 
 @app.get("/api/data/stock_info")
-def get_stock_info(page: int = 1, page_size: int = 1000, db: Session = Depends(get_db)):
-    """获取股票信息数据，按id逆序排列，分页"""
+def get_stock_info(page: int = 1, page_size: int = 1000, stock_code: str = None, db: Session = Depends(get_db)):
+    """获取股票信息数据，按id逆序排列，分页，支持按股票代码筛选"""
     from sqlalchemy import func
     
+    query = db.query(StockInfo)
+    if stock_code:
+        query = query.filter(StockInfo.stock_code == stock_code)
+    
     offset = (page - 1) * page_size
-    total = db.query(func.count(StockInfo.id)).scalar()
-    items = db.query(StockInfo).order_by(StockInfo.id.desc()).offset(offset).limit(page_size).all()
+    total = query.with_entities(func.count(StockInfo.id)).scalar()
+    items = query.order_by(StockInfo.id.desc()).offset(offset).limit(page_size).all()
     
     result = []
     for item in items:

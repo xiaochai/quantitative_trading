@@ -35,13 +35,13 @@
         <div class="input-glow"></div>
         <input 
           type="text" 
-          v-model="newStockCode" 
-          placeholder="输入股票代码 (如 600036.SH)"
-          @keyup.enter="triggerCrawl"
+          v-model="searchKeyword" 
+          placeholder="输入股票代码或名称搜索"
+          @keyup.enter="handleSearch"
           class="tech-input"
         />
-        <button @click="triggerCrawl" class="tech-btn">
-          <span class="btn-text">ADD STOCK</span>
+        <button @click="handleSearch" class="tech-btn">
+          <span class="btn-text">搜索</span>
           <span class="btn-glow"></span>
         </button>
       </div>
@@ -125,13 +125,19 @@ const router = useRouter()
 const loading = ref(false)
 const stocks = ref([])
 const summary = ref(null)
-const newStockCode = ref('')
+const searchKeyword = ref('')
 
-async function fetchData() {
+async function fetchStocks(index = null, search = null) {
   loading.value = true
   try {
+    let url = '/api/stocks'
+    const params = new URLSearchParams()
+    if (index) params.append('index', index)
+    if (search) params.append('search', search)
+    if (params.toString()) url += '?' + params.toString()
+    
     const [stocksRes, summaryRes] = await Promise.all([
-      fetch('/api/stocks'),
+      fetch(url),
       fetch('/api/stocks/summary')
     ])
     stocks.value = await stocksRes.json()
@@ -147,15 +153,23 @@ function goToDetail(code) {
   router.push({ name: 'StockDetail', params: { code } })
 }
 
-function triggerCrawl() {
-  const code = newStockCode.value.trim()
-  if (code) {
-    alert('提示：当前需要在后端运行数据抓取脚本\n' +
-          'cd /Users/bytedance/go/src/github.com/xiaochai/quantitative_trading\n' +
-          'PYTHONPATH=. backend/.venv/bin/python backend/crawler/stock_crawler.py\n\n' +
-          '（脚本已配置为抓取 600036.SH，可修改脚本添加其他股票）')
-    fetchData()
+function handleSearch() {
+  const keyword = searchKeyword.value.trim()
+  if (keyword) {
+    fetchStocks(null, keyword)
+  } else {
+    loadHS300()
   }
+}
+
+function loadHS300() {
+  searchKeyword.value = ''
+  fetchStocks('沪深300', null)
+}
+
+function loadAllStocks() {
+  searchKeyword.value = ''
+  fetchStocks(null, null)
 }
 
 function goToDataViewer() {
@@ -163,7 +177,7 @@ function goToDataViewer() {
 }
 
 onMounted(() => {
-  fetchData()
+  loadHS300()
 })
 </script>
 
