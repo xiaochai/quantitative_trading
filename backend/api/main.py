@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from backend.database.database import get_db
-from backend.models.stock_data import DailyQuote, StockInfo, StockFundamental
+from database.database import get_db
+from models.stock_data import DailyQuote, StockInfo, StockFundamental
 from datetime import date
 
 app = FastAPI()
@@ -71,10 +71,10 @@ def get_stock_fundamentals(stock_code: str, db: Session = Depends(get_db)):
 
 @app.get("/api/stock/{stock_code}/info")
 def get_stock_info(stock_code: str, db: Session = Depends(get_db)):
-    # 获取最新的记录
+    # 获取最新的记录，按 report_date 倒序
     info = db.query(StockInfo).filter(
         StockInfo.stock_code == stock_code
-    ).order_by(StockInfo.effective_from.desc()).first()
+    ).order_by(StockInfo.report_date.desc()).first()
     
     if info:
         return {
@@ -111,11 +111,10 @@ def get_all_stocks(db: Session = Depends(get_db)):
             DailyQuote.stock_code == code
         ).order_by(DailyQuote.trade_date.desc()).first()
         
-        # 获取股票信息
+        # 获取股票信息（按 report_date 倒序取最新）
         stock_info = db.query(StockInfo).filter(
-            StockInfo.stock_code == code,
-            StockInfo.effective_to.is_(None)
-        ).first()
+            StockInfo.stock_code == code
+        ).order_by(StockInfo.report_date.desc()).first()
         
         if latest_quote:
             result.append({
@@ -243,8 +242,7 @@ def get_stock_info(page: int = 1, page_size: int = 1000, db: Session = Depends(g
             "delisted_date": item.delisted_date.isoformat() if item.delisted_date else None,
             "listed_date": item.listed_date.isoformat() if item.listed_date else None,
             "component_tags": item.component_tags,
-            "effective_from": item.effective_from.isoformat() if item.effective_from else None,
-            "effective_to": item.effective_to.isoformat() if item.effective_to else None
+            "report_date": item.report_date.isoformat() if item.report_date else None
         })
     
     return {

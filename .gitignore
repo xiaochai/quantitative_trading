@@ -34,7 +34,6 @@ venv/
 *~
 
 # Database
-*.db
 *.sqlite
 *.sqlite3
 

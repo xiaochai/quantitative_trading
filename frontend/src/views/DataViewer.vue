@@ -160,8 +160,7 @@ const tableColumns = computed(() => {
       { key: 'delisted_date', label: '退市日期' },
       { key: 'listed_date', label: '上市日期' },
       { key: 'component_tags', label: '标签' },
-      { key: 'effective_from', label: '生效日期' },
-      { key: 'effective_to', label: '失效日期' }
+      { key: 'report_date', label: '报告日期' }
     ]
   }
   return columns[activeTab.value] || []

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Boolean, Text, UniqueConstraint
-from backend.database.database import Base
+from database.database import Base
 
 class DailyQuote(Base):
     __tablename__ = "daily_quotes"
@@ -67,10 +67,9 @@ class StockInfo(Base):
     delisted_date = Column(Date)
     listed_date = Column(Date)
     component_tags = Column(Text)
-    effective_from = Column(Date, nullable=False)
-    effective_to = Column(Date)
+    report_date = Column(Date, nullable=False)
     
-    # 添加唯一键约束，防止重复数据
+    # 唯一键约束，股票代码 + 报告日期唯一
     __table_args__ = (
-        UniqueConstraint('stock_code', 'effective_from', name='uq_stock_effective_from'),
+        UniqueConstraint('stock_code', 'report_date', name='uq_stock_report_date'),
     )

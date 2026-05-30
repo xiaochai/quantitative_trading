@@ -26,19 +26,19 @@
 
 | 字段名称             | 数据类型   | 说明                | 更新频率 |
 | ---------------- | ------ | ----------------- | ---- |
-| stock\_code      | string | 股票代码（如 600000.SH） | 首次抓取 |
-| trade\_date      | date   | 交易日期              | 每日盘后 |
+| stock_code      | string | 股票代码（如 600000.SH） | 首次抓取 |
+| trade_date      | date   | 交易日期              | 每日盘后 |
 | open             | float  | 开盘价               | 每日盘后 |
 | close            | float  | 收盘价               | 每日盘后 |
 | high             | float  | 最高价               | 每日盘后 |
 | low              | float  | 最低价               | 每日盘后 |
 | volume           | int    | 成交量（股）            | 每日盘后 |
 | amount           | float  | 成交额（元）            | 每日盘后 |
-| change\_pct      | float  | 当日涨跌幅（%）          | 每日盘后 |
-| change\_20d\_pct | float  | 近20日涨跌幅（%）        | 每日盘后 |
-| turnover\_rate   | float  | 换手率（%）            | 每日盘后 |
-| market\_cap      | float  | 总市值（亿元）          | 每日盘后 |
-| pe\_ttm          | float  | 滚动市盈率（TTM）        | 每日盘后 |
+| change_pct      | float  | 当日涨跌幅（%）          | 每日盘后 |
+| change_20d_pct | float  | 近20日涨跌幅（%）        | 每日盘后 |
+| turnover_rate   | float  | 换手率（%）            | 每日盘后 |
+| market_cap      | float  | 总市值（亿元）          | 每日盘后 |
+| pe_ttm          | float  | 滚动市盈率（TTM）        | 每日盘后 |
 
 ### 3.2 技术指标数据
 
@@ -48,41 +48,40 @@
 | ma20         | float | 20日均线     | 每日盘后 |
 | ma60         | float | 60日均线     | 每日盘后 |
 | macd         | float | MACD值     | 每日盘后 |
-| macd\_signal | float | MACD信号线   | 每日盘后 |
-| macd\_hist   | float | MACD柱状图   | 每日盘后 |
+| macd_signal | float | MACD信号线   | 每日盘后 |
+| macd_hist   | float | MACD柱状图   | 每日盘后 |
 | rsi          | float | RSI相对强弱指标 | 每日盘后 |
-| boll\_upper  | float | 布林带上轨     | 每日盘后 |
-| boll\_middle | float | 布林带中轨     | 每日盘后 |
-| boll\_lower  | float | 布林带下轨     | 每日盘后 |
+| boll_upper  | float | 布林带上轨     | 每日盘后 |
+| boll_middle | float | 布林带中轨     | 每日盘后 |
+| boll_lower  | float | 布林带下轨     | 每日盘后 |
 
 ### 3.3 基本面数据
 
 | 字段名称                | 数据类型  | 说明        | 更新频率 |
 | ------------------- | ----- | --------- | ---- |
-| market\_cap         | float | 总市值（亿元）   | 每日盘后 |
-| pe\_ttm             | float | 市盈率（TTM）  | 季度更新 |
+| market_cap         | float | 总市值（亿元）   | 每日盘后 |
+| pe_ttm             | float | 市盈率（TTM）  | 季度更新 |
 | pb                  | float | 市净率       | 季度更新 |
 | roe                 | float | 净资产收益率（%） | 季度更新 |
 | eps                 | float | 每股收益（元）   | 季度更新 |
-| net\_profit\_growth | float | 净利润增速（%）  | 季度更新 |
-| revenue\_growth     | float | 营业收入增速（%） | 季度更新 |
-| dividend\_yield     | float | 股息率（%）    | 年度更新 |
+| net_profit_growth | float | 净利润增速（%）  | 季度更新 |
+| revenue_growth     | float | 营业收入增速（%） | 季度更新 |
+| dividend_yield     | float | 股息率（%）    | 年度更新 |
 
 ### 3.4 分类标签数据
 
 | 字段名称            | 数据类型      | 说明                  | 更新频率  |
 | --------------- | --------- | ------------------- | ----- |
-| stock\_name     | string    | 股票名称                | 首次抓取  |
-| industry\_sw1   | string    | 申万一级行业              | 每周检查  |
-| industry\_sw2   | string    | 申万二级行业              | 每周检查  |
-| is\_st          | boolean   | 是否ST                | 每周检查  |
-| is\_star\_st    | boolean   | 是否\*ST              | 每周检查  |
-| is\_delisted    | boolean   | 是否已退市               | 每周检查  |
-| delisted\_date  | date      | 退市日期                | 退市时更新  |
-| listed\_date    | date      | 上市日期                | 首次抓取  |
-| component\_tags | string\[] | 成分股标签（如沪深300、创业板指等） | 指数调整后 |
-| effective\_from | date      | 生效日期                | 首次抓取  |
-| effective\_to   | date      | 失效日期（NULL表示当前有效）    | 状态变更时更新 |
+| stock_name     | string    | 股票名称                | 每日检查  |
+| industry_sw1   | string    | 申万一级行业              | 每日检查  |
+| industry_sw2   | string    | 申万二级行业              | 每日检查  |
+| is_st          | boolean   | 是否ST                | 每日检查  |
+| is_star_st    | boolean   | 是否*ST              | 每日检查  |
+| is_delisted    | boolean   | 是否已退市               | 每日检查  |
+| delisted_date  | date      | 退市日期                | 退市时更新  |
+| listed_date    | date      | 上市日期                | 首次抓取  |
+| component_tags | string[] | 成分股标签（如沪深300、创业板指等） | 指数调整后 |
+| report_date  | date      | 报告日期                | 状态变更时更新 |
 
 ***
 
@@ -123,72 +122,77 @@
 
 ### 6.2 核心数据表
 
-#### 表1: daily\_quotes（日线行情表）
+#### 表1: daily_quotes（日线行情表）
 
-| 字段                                    | 类型     | 约束                          |
-| ------------------------------------- | ------ | --------------------------- |
-| id                                    | int    | PRIMARY KEY AUTO\_INCREMENT |
-| stock\_code                           | string | NOT NULL                    |
-| trade\_date                           | date   | NOT NULL                    |
-| open                                  | float  | <br />                      |
-| close                                 | float  | <br />                      |
-| high                                  | float  | <br />                      |
-| low                                   | float  | <br />                      |
-| volume                                | bigint | <br />                      |
-| amount                                | float  | <br />                      |
-| change\_pct                           | float  | <br />                      |
-| change\_20d\_pct                      | float  | <br />                      |
-| turnover\_rate                        | float  | <br />                      |
-| market\_cap                           | float  | 总市值（亿元）                |
-| pe\_ttm                               | float  | 滚动市盈率（TTM）              |
-| ma5                                   | float  | <br />                      |
-| ma20                                  | float  | <br />                      |
-| ma60                                  | float  | <br />                      |
-| macd                                  | float  | <br />                      |
-| macd\_signal                          | float  | <br />                      |
-| macd\_hist                            | float  | <br />                      |
-| rsi                                   | float  | <br />                      |
-| boll\_upper                           | float  | <br />                      |
-| boll\_middle                          | float  | <br />                      |
-| boll\_lower                           | float  | <br />                      |
-| UNIQUE KEY (stock\_code, trade\_date) | <br /> | <br />                      |
+| 字段                                    | 类型     | 约束                          | 说明                      | 备注 |
+| ------------------------------------- | ------ | --------------------------- | ----------------------- | --- |
+| id                                    | int    | PRIMARY KEY AUTO_INCREMENT | 自增主键                    |  -   |
+| stock_code                           | string | NOT NULL                    | 股票代码                    |   -  |
+| trade_date                           | date   | NOT NULL                    | 交易日期                    |   -  |
+| open                                  | float  | <br />                      | 开盘价                     |已拉取，已校验，不复权|
+| close                                 | float  | <br />                      | 收盘价                     |已拉取，已校验，不复权|
+| high                                  | float  | <br />                      | 最高价                     |已拉取，已校验，不复权|
+| low                                   | float  | <br />                      | 最低价                     |已拉取，已校验，不复权|
+| volume                                | bigint | <br />                      | 成交量（手）                 |已拉取，已校验|
+| amount                                | float  | <br />                      | 成交额（元）                 |*计算估算|
+| change_pct                           | float  | <br />                      | 当日涨跌幅（%）               |  已拉取   |
+| change_20d_pct                      | float  | <br />                      | 近20日涨跌幅（%）             |   计算值  |
+| turnover_rate                        | float  | <br />                      | 换手率（%）                 |  *未拉取   |
+| market_cap                           | float  | 总市值（亿元）                | 总市值                     |   *未拉取    |
+| pe_ttm                               | float  | 滚动市盈率（TTM）              | 滚动市盈率                   |   *未拉取    |
+| ma5                                   | float  | <br />                      | 5日均线                    |  计算值  |
+| ma20                                  | float  | <br />                      | 20日均线                   |  计算值   |
+| ma60                                  | float  | <br />                      | 60日均线                   |  计算值   |
+| macd                                  | float  | <br />                      | MACD值                   |  计算值   |
+| macd_signal                          | float  | <br />                      | MACD信号线                 |  计算值   |
+| macd_hist                            | float  | <br />                      | MACD柱状图                 |  计算值   |
+| rsi                                   | float  | <br />                      | RSI相对强弱指标             |  计算值   |
+| boll_upper                           | float  | <br />                      | 布林带上轨                  |  计算值   |
+| boll_middle                          | float  | <br />                      | 布林带中轨                  |  计算值   |
+| boll_lower                           | float  | <br />                      | 布林带下轨                  |  计算值   |
+| UNIQUE KEY (stock_code, trade_date) | <br /> | <br />                      | 唯一约束                    |     |
 
-#### 表2: stock\_fundamentals（基本面数据表）
+#### 表2: stock_fundamentals（基本面数据表）
 
-| 字段                                     | 类型     | 约束                          |
-| -------------------------------------- | ------ | --------------------------- |
-| id                                     | int    | PRIMARY KEY AUTO\_INCREMENT |
-| stock\_code                            | string | NOT NULL                    |
-| report\_date                           | date   | NOT NULL                    |
-| pb                                     | float  | 市净率                       |
-| roe                                    | float  | 净资产收益率（%）              |
-| eps                                    | float  | 每股收益（元）                |
-| eps\_ttm                               | float  | 滚动每股收益（TTM）            |
-| net\_profit\_growth                    | float  | 净利润增速（%）                |
-| revenue\_growth                        | float  | 营业收入增速（%）              |
-| dividend\_yield                        | float  | 股息率（%）                  |
-| UNIQUE KEY (stock\_code, report\_date) | <br /> | <br />                      |
+| 字段                                     | 类型     | 约束                          | 说明                 | 备注 |
+| -------------------------------------- | ------ | --------------------------- | ------------------ | --- |
+| id                                     | int    | PRIMARY KEY AUTO_INCREMENT | 自增主键             |  -   |
+| stock_code                            | string | NOT NULL                    | 股票代码             |   -  |
+| report_date                           | date   | NOT NULL                    | 报告日期             |   已抓取  |
+| pb                                     | float  | 市净率                       | 市净率              |  *未抓取   |
+| roe                                    | float  | 净资产收益率（%）              | 净资产收益率          |   已抓取   |
+| eps                                    | float  | 每股收益（元）                | 每股收益            |   已抓取   |
+| eps_ttm                               | float  | 滚动每股收益（TTM）            | 滚动每股收益          |   *未抓取   |
+| net_profit_growth                    | float  | 净利润增速（%）                | 净利润增速           |  已抓取   |
+| revenue_growth                        | float  | 营业收入增速（%）              | 营业收入增速          |  已抓取   |
+| dividend_yield                        | float  | 股息率（%）                  | 股息率             |  *未抓取   |
+| UNIQUE KEY (stock_code, report_date) | <br /> | <br />                      | 唯一约束             |     |
 
 **说明**：PE(TTM)和总市值存储在daily_quotes表中，本表格存储季度财报原始数据。
 
-#### 表3: stock\_info（股票基础信息表）
+#### 表3: stock_info（股票基础信息表）
 
-| 字段              | 类型       | 约束            |
-| --------------- | -------- | ------------- |
-| id              | int      | PRIMARY KEY AUTO_INCREMENT |
-| stock\_code     | string   | NOT NULL      |
-| stock\_name     | string   | NOT NULL      |
-| industry\_sw1   | string   | <br />        |
-| industry\_sw2   | string   | <br />        |
-| is\_st          | boolean  | DEFAULT FALSE |
-| is\_star\_st    | boolean  | DEFAULT FALSE |
-| is\_delisted    | boolean  | DEFAULT FALSE |
-| delisted\_date  | date     | <br />        |
-| listed\_date    | date     | <br />        |
-| component\_tags | text     | JSON格式存储      |
-| effective\_from | date     | NOT NULL      |
-| effective\_to   | date     | <br />        |
-| UNIQUE KEY (stock\_code, effective\_from) | <br /> | <br /> |
+| 字段              | 类型       | 约束            | 说明             | 备注 |
+| --------------- | -------- | ------------- | -------------- | --- |
+| id              | int      | PRIMARY KEY AUTO_INCREMENT | 自增主键          | -    |
+| stock_code     | string   | NOT NULL      | 股票代码          |  -   |
+| stock_name     | string   | NOT NULL      | 股票名称          |  已抓取   |
+| industry_sw1   | string   | <br />        | 申万一级行业        |  *未抓取   |
+| industry_sw2   | string   | <br />        | 申万二级行业        |  *未抓取   |
+| is_st          | boolean  | DEFAULT FALSE | 是否ST          |   计算值  |
+| is_star_st    | boolean  | DEFAULT FALSE | 是否*ST        |   计算值  |
+| is_delisted    | boolean  | DEFAULT FALSE | 是否已退市         |  *未抓取   |
+| delisted_date  | date     | <br />        | 退市日期          |  *未抓取   |
+| listed_date    | date     | <br />        | 上市日期          |  *未抓取   |
+| component_tags | text     | JSON格式存储      | 成分股标签         |  *未抓取   |
+| report_date    | date     | NOT NULL      | 报告日期          |   -  |
+| UNIQUE KEY (stock_code, report_date) | <br /> | <br /> | 唯一约束          |     |
+
+**记录逻辑**：
+- 每只股票可以有多条记录，按 report_date 区分不同时期的状态
+- 当股票信息发生变化时（如变成ST、退市、名称变更等），插入一条新记录
+- 同一天内多次更新时，直接更新当天的记录，而不是插入多条
+- 查询最新信息时，按 report_date 倒序取第一条记录
 
 ***
 
@@ -250,4 +254,3 @@
 26. 银行
 27. 非银金融
 28. 传媒
-

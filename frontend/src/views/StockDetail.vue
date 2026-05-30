@@ -355,9 +355,24 @@ function renderKlineChart() {
   const dates = validQuotes.map(q => q.trade_date)
   const klineData = validQuotes.map(q => [q.open, q.close, q.low, q.high])
   const volumes = validQuotes.map(q => q.volume)
+  const amounts = validQuotes.map(q => q.amount)
   const ma5 = validQuotes.map(q => q.ma5)
   const ma20 = validQuotes.map(q => q.ma20)
   const ma60 = validQuotes.map(q => q.ma60)
+
+  const formatAmount = (value) => {
+    if (value == null) return '-'
+    if (value >= 100000000) return (value / 100000000).toFixed(2) + ' 亿'
+    if (value >= 10000) return (value / 10000).toFixed(2) + ' 万'
+    return value.toFixed(0)
+  }
+
+  const formatVolume = (value) => {
+    if (value == null) return '-'
+    if (value >= 100000000) return (value / 100000000).toFixed(2) + ' 亿'
+    if (value >= 10000) return (value / 10000).toFixed(2) + ' 万'
+    return value.toString()
+  }
 
   const option = {
     backgroundColor: 'transparent',
@@ -367,7 +382,30 @@ function renderKlineChart() {
       backgroundColor: 'rgba(15,23,42,0.95)',
       borderColor: 'rgba(0,212,255,0.3)',
       textStyle: { color: '#fff' },
-      borderWidth: 1
+      borderWidth: 1,
+      formatter: function(params) {
+        let result = ''
+        const dataIndex = params[0].dataIndex
+        const quote = validQuotes[dataIndex]
+        
+        if (quote) {
+          result += `<div style="font-weight: bold; margin-bottom: 8px;">${quote.trade_date}</div>`
+          result += `<div style="margin: 4px 0;">开: ${quote.open?.toFixed(2) || '-'} </div>`
+          result += `<div style="margin: 4px 0;">收: ${quote.close?.toFixed(2) || '-'} </div>`
+          result += `<div style="margin: 4px 0;">高: ${quote.high?.toFixed(2) || '-'} </div>`
+          result += `<div style="margin: 4px 0;">低: ${quote.low?.toFixed(2) || '-'} </div>`
+          result += `<div style="margin: 4px 0;">成交量: ${formatVolume(quote.volume)} </div>`
+          result += `<div style="margin: 4px 0;">成交额: ${formatAmount(quote.amount)} </div>`
+          
+          params.forEach(p => {
+            if (p.seriesName.includes('MA')) {
+              result += `<div style="margin: 4px 0;">${p.seriesName}: ${p.value?.toFixed(2) || '-'} </div>`
+            }
+          })
+        }
+        
+        return result
+      }
     },
     legend: {
       data: ['K线', 'MA5', 'MA20', 'MA60'],
@@ -423,10 +461,10 @@ function renderKlineChart() {
         type: 'candlestick',
         data: klineData,
         itemStyle: {
-          color: '#00ff88',
-          color0: '#ff6b6b',
-          borderColor: '#00ff88',
-          borderColor0: '#ff6b6b'
+          color: '#ff6b6b',
+          color0: '#00ff88',
+          borderColor: '#ff6b6b',
+          borderColor0: '#00ff88'
         }
       },
       {
@@ -463,7 +501,7 @@ function renderKlineChart() {
           color: function(params) {
             const index = params.dataIndex
             const quote = validQuotes[index]
-            return quote?.close >= quote?.open ? 'rgba(0,255,136,0.7)' : 'rgba(255,107,107,0.7)'
+            return quote?.close >= quote?.open ? 'rgba(255,107,107,0.7)' : 'rgba(0,255,136,0.7)'
           }
         }
       }
@@ -540,7 +578,7 @@ function renderMacdChart() {
         data: macdHist,
         itemStyle: {
           color: function(params) {
-            return params.value >= 0 ? 'rgba(0,255,136,0.7)' : 'rgba(255,107,107,0.7)'
+            return params.value >= 0 ? 'rgba(255,107,107,0.7)' : 'rgba(0,255,136,0.7)'
           }
         }
       }
@@ -943,11 +981,11 @@ onMounted(() => {
 }
 
 .stat-up {
-  border-color: rgba(0,255,136,0.2);
+  border-color: rgba(255,107,107,0.2);
 }
 
 .stat-down {
-  border-color: rgba(255,107,107,0.2);
+  border-color: rgba(0,255,136,0.2);
 }
 
 .stat-label {
@@ -965,11 +1003,11 @@ onMounted(() => {
 }
 
 .stat-up .stat-value {
-  color: #00ff88;
+  color: #ff6b6b;
 }
 
 .stat-down .stat-value {
-  color: #ff6b6b;
+  color: #00ff88;
 }
 
 /* 图表容器 */
@@ -1082,12 +1120,12 @@ onMounted(() => {
 }
 
 .change-up {
-  color: #00ff88;
+  color: #ff6b6b;
   font-weight: 600;
 }
 
 .change-down {
-  color: #ff6b6b;
+  color: #00ff88;
   font-weight: 600;
 }
 </style>
