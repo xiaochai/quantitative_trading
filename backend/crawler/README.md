@@ -12,6 +12,7 @@
 | `fetch_financials_from_ths.py` | 从同花顺获取财务基本信息 |
 | `fetch_historical_data.py` | 获取股票历史日线数据 |
 | `batch_fetch_history_data.py` | 批量获取所有股票的历史数据和财务数据 |
+| `fetch_constituents.py` | 抓取指数成分股数据并更新 stock_info 表 |
 | `trading_calendar.py` | 交易日历管理 |
 
 ---
@@ -150,6 +151,49 @@ PYTHONPATH=. backend/.venv/bin/python backend/crawler/batch_fetch_history_data.p
 
 ---
 
+## 6. `fetch_constituents.py` - 抓取指数成分股数据
+
+### 功能说明
+- 使用 `ak.index_stock_cons()` 接口抓取常见指数的成分股
+- 按股票代码聚合指数标签（一只股票可属于多个指数）
+- 按照 stock_info 表的规范更新或插入记录
+- 数据优先从本地文件加载，避免重复请求
+- 支持8个常见指数：沪深300、中证500、中证1000、创业板指、上证50、科创50、上证180、深证100
+
+### 支持的指数
+
+| 指数名称 | 代码 | 说明 |
+|---------|------|------|
+| 沪深300 | 000300 | 大盘蓝筹股 |
+| 中证500 | 000905 | 中盘股 |
+| 中证1000 | 000852 | 小盘股 |
+| 创业板指 | 399006 | 创业板 |
+| 上证50 | 000016 | 超大盘蓝筹 |
+| 科创50 | 000688 | 科创板 |
+| 上证180 | 000010 | 上海市场蓝筹 |
+| 深证100 | 399330 | 深圳市场蓝筹 |
+
+### stock_info 更新逻辑
+- 查询每只股票最新的记录
+- 如果成分股标签有变化，检查今天是否已有记录
+  - 有记录：直接更新今天的 component_tags
+  - 无记录：插入新记录（保留其他字段的最新值）
+- 股票代码自动补全后缀（6开头.SH，0/3开头.SZ）
+
+### 数据存储
+- 缓存文件：`data/constituents_YYYYMMDD.json`
+- 数据库字段：`stock_info.component_tags`（JSON格式数组）
+
+### 可用函数
+脚本主要直接运行，不对外暴露函数。
+
+### 运行方式
+```bash
+PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_constituents.py
+```
+
+---
+
 ## 📂 数据文件
 
 所有数据文件都保存在 `data/` 子目录下：
@@ -159,6 +203,7 @@ PYTHONPATH=. backend/.venv/bin/python backend/crawler/batch_fetch_history_data.p
 | `sina_stock_data_YYYYMMDD.json` | 每日从新浪获取的原始股票数据 |
 | `financial_STOCKCODE_YYYYMMDD.json` | 单只股票的财务数据 |
 | `historical_STOCKCODE_STARTDATE_ENDDATE.json` | 单只股票的历史日线数据 |
+| `constituents_YYYYMMDD.json` | 指数成分股缓存数据 |
 | `trading_calendar.json` | 交易日历缓存 |
 
 ---
@@ -169,6 +214,12 @@ PYTHONPATH=. backend/.venv/bin/python backend/crawler/batch_fetch_history_data.p
    ```bash
    # 获取所有股票的基本信息
    PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_all_from_sina.py
+   
+   # 获取申万行业分类
+   PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_sw_industry.py
+   
+   # 获取指数成分股数据
+   PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_constituents.py
    
    # 批量获取所有股票的历史数据和财务数据
    PYTHONPATH=. backend/.venv/bin/python backend/crawler/batch_fetch_history_data.py
@@ -183,7 +234,16 @@ PYTHONPATH=. backend/.venv/bin/python backend/crawler/batch_fetch_history_data.p
    PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_all_from_sina.py
    ```
 
-3. **按需抓取单只股票数据**：
+3. **定期更新**：
+   ```bash
+   # 每周更新行业分类（可选，一般变化不大）
+   PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_sw_industry.py
+   
+   # 每半年或指数调整后更新成分股
+   PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_constituents.py
+   ```
+
+4. **按需抓取单只股票数据**：
    ```bash
    # 财务数据
    PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_financials_from_ths.py 600036.SH

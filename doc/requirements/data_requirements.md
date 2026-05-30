@@ -184,7 +184,7 @@
 | is_delisted    | boolean  | DEFAULT FALSE | 是否已退市         |  *未抓取   |
 | delisted_date  | date     | <br />        | 退市日期          |  *未抓取   |
 | listed_date    | date     | <br />        | 上市日期          |  *未抓取   |
-| component_tags | text     | JSON格式存储      | 成分股标签         |  *未抓取   |
+| component_tags | text     | JSON格式存储      | 成分股标签         |  已抓取   |
 | report_date    | date     | NOT NULL      | 报告日期          |   -  |
 | UNIQUE KEY (stock_code, report_date) | <br /> | <br /> | 唯一约束          |     |
 
