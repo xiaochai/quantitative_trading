@@ -226,6 +226,8 @@
 
 ### 8.2 申万一级行业列表
 
+分类信息从https://www.swsresearch.com/institute_sw/allIndex/downloadCenter/industryType 网站下载rar包获取
+
 1. 农林牧渔
 2. 采掘
 3. 化工

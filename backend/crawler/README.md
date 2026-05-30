@@ -13,6 +13,7 @@
 | `fetch_historical_data.py` | 获取股票历史日线数据 |
 | `batch_fetch_history_data.py` | 批量获取所有股票的历史数据和财务数据 |
 | `fetch_constituents.py` | 抓取指数成分股数据并更新 stock_info 表 |
+| `fetch_sw_industry.py` | 从 Excel 文件解析申万行业分类并更新 stock_info 表 |
 | `trading_calendar.py` | 交易日历管理 |
 
 ---
@@ -194,6 +195,43 @@ PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_constituents.py
 
 ---
 
+## 7. `fetch_sw_industry.py` - 从 akshare 获取最新申万行业分类
+
+### 功能说明
+- 从 akshare 获取最新的申万行业分类数据
+- 遍历31个一级行业、131个二级行业
+- 按照 stock_info 表的规范更新或插入记录
+- 更新 `industry_sw1`（申万一级行业）和 `industry_sw2`（申万二级行业）字段
+
+### 数据来源
+- akshare 的 `sw_index_first_info` - 申万一级行业
+- akshare 的 `sw_index_second_info` - 申万二级行业
+- akshare 的 `index_component_sw` - 获取行业指数成分股
+
+### 行业分类结构
+- 一级行业: 31个（农林牧渔、基础化工、钢铁、有色金属、电子、汽车、家用电器、食品饮料...）
+- 二级行业: 131个
+- 覆盖股票: 5200+只
+
+### stock_info 更新逻辑
+- 查询每只股票最新的记录
+- 如果行业分类有变化，检查今天是否已有记录
+  - 有记录：直接更新今天的 industry_sw1/industry_sw2
+  - 无记录：插入新记录（保留其他字段的最新值）
+
+### 数据存储
+- 缓存文件：`data/sw_industry_akshare_YYYYMMDD.json`
+- 数据库字段：
+  - `stock_info.industry_sw1`（申万一级行业）
+  - `stock_info.industry_sw2`（申万二级行业）
+
+### 运行方式
+```bash
+PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_sw_industry.py
+```
+
+---
+
 ## 📂 数据文件
 
 所有数据文件都保存在 `data/` 子目录下：
@@ -204,6 +242,7 @@ PYTHONPATH=. backend/.venv/bin/python backend/crawler/fetch_constituents.py
 | `financial_STOCKCODE_YYYYMMDD.json` | 单只股票的财务数据 |
 | `historical_STOCKCODE_STARTDATE_ENDDATE.json` | 单只股票的历史日线数据 |
 | `constituents_YYYYMMDD.json` | 指数成分股缓存数据 |
+| `sw_industry_akshare_YYYYMMDD.json` | 申万行业分类缓存数据（来自akshare） |
 | `trading_calendar.json` | 交易日历缓存 |
 
 ---
