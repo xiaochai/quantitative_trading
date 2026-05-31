@@ -26,6 +26,15 @@ env/
 ENV/
 venv/
 
+.env
+deploy/.env
+
+*.pem
+*.key
+*.p12
+id_rsa
+id_rsa.pub
+
 # IDE
 .vscode/
 .idea/

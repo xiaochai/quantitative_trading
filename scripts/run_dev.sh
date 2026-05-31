@@ -11,7 +11,7 @@ echo "  启动量化交易系统开发环境"
 echo "========================================"
 
 # 检查是否已经有进程在运行
-for port in 8000 5173; do
+for port in 8001 8080; do
     if lsof -ti :$port > /dev/null 2>&1; then
         echo "⚠️  警告: 端口 $port 已被占用"
         echo "请先停止之前的服务"
@@ -29,12 +29,12 @@ echo "----------------------------------------"
 cd "$BACKEND_DIR"
 source .venv/bin/activate
 
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload > "$TMP_DIR/backend.log" 2>&1 &
+uvicorn api.main:app --host 0.0.0.0 --port 8001 --reload > "$TMP_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 
 echo "后端服务已启动 (PID: $BACKEND_PID)"
 echo "后端日志: $TMP_DIR/backend.log"
-echo "API文档: http://localhost:8000/docs"
+echo "API文档: http://localhost:8001/docs"
 
 # 等待后端启动
 echo ""
@@ -64,15 +64,15 @@ FRONTEND_PID=$!
 
 echo "前端服务已启动 (PID: $FRONTEND_PID)"
 echo "前端日志: $TMP_DIR/frontend.log"
-echo "前端页面: http://localhost:5173"
+echo "前端页面: http://localhost:8080"
 
 echo ""
 echo "服务启动完成！"
 echo "========================================"
 echo ""
-echo "后端服务: http://localhost:8000"
-echo "前端页面: http://localhost:5173"
-echo "API文档: http://localhost:8000/docs"
+echo "后端服务: http://localhost:8001"
+echo "前端页面: http://localhost:8080"
+echo "API文档: http://localhost:8001/docs"
 echo ""
 echo "服务正在监控日志（按 Ctrl+C 退出监控）"
 echo ""
