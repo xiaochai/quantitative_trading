@@ -184,20 +184,20 @@ def _market_risk_off(signal_date: str, index_close_by_date: Dict[str, float], wi
 
 
 def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
-    dates = context['dates']
-    quotes_by_date = context['quotes_by_date']
-    universe_meta = context['universe_meta']
-    index_close_by_date = context.get('hs300_index_close_by_date') or {}
-    initial_capital = float(context['initial_capital'])
-    max_positions = int(context['max_positions'])
-    cash_reserve_ratio = float(context['cash_reserve_ratio'])
-    keep_buffer = int(params['keep_buffer'])
-    min_holding_days = int(params['min_holding_days'])
-    stop_loss_pct = float(params['stop_loss_pct'])
-    enable_intraday_stop = bool(params.get('enable_intraday_stop'))
-    intraday_stop_loss_pct = float(params.get('intraday_stop_loss_pct') or 0.0)
-    enable_market_risk = bool(params.get('enable_market_risk_control'))
-    market_ma_window = int(params.get('market_ma_window') or 60)
+    dates = context['dates']  # 回测交易日序列（信号日为 T，执行日使用 T+1）
+    quotes_by_date = context['quotes_by_date']  # 行情数据：quotes_by_date[date][stock_code] -> 日线与指标字典
+    universe_meta = context['universe_meta']  # 股票池元数据：ST/退市/上市日期/名称等
+    index_close_by_date = context.get('hs300_index_close_by_date') or {}  # 沪深300指数收盘价映射（用于市场风控）
+    initial_capital = float(context['initial_capital'])  # 初始资金
+    max_positions = int(context['max_positions'])  # 最大持仓只数
+    cash_reserve_ratio = float(context['cash_reserve_ratio'])  # 预留现金比例（不参与建仓）
+    keep_buffer = int(params['keep_buffer'])  # 持仓缓冲名次：已有持仓排名略靠后时仍可继续持有以降低换手
+    min_holding_days = int(params['min_holding_days'])  # 最短持有天数（未满则掉出目标组合也不立刻卖）
+    stop_loss_pct = float(params['stop_loss_pct'])  # 收盘止损比例（基于成本价触发）
+    enable_intraday_stop = bool(params.get('enable_intraday_stop'))  # 是否启用盘中止损（使用执行日 low 触发）
+    intraday_stop_loss_pct = float(params.get('intraday_stop_loss_pct') or 0.0)  # 盘中止损比例（相对前收/锚定价）
+    enable_market_risk = bool(params.get('enable_market_risk_control'))  # 是否启用市场风控（指数跌破均线则 risk-off）
+    market_ma_window = int(params.get('market_ma_window') or 60)  # 市场风控均线窗口（默认 60 日）
 
     cash = initial_capital
     holdings: Dict[str, Dict[str, Any]] = {}
