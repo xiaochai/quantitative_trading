@@ -271,6 +271,7 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
 
         available_slots = max_positions - len(holdings)
         buys = []
+        buy_skipped = []
         if available_slots > 0 and not market_risk:
             portfolio_value = _portfolio_value(cash, holdings, signal_quotes, 'close')
             target_position_value = portfolio_value * (1 - cash_reserve_ratio) / max_positions if max_positions else 0
@@ -279,18 +280,31 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
                     continue
                 execute_quote = execute_quotes.get(candidate['stock_code'])
                 if not execute_quote or not execute_quote.get('open'):
+                    buy_skipped.append({
+                        'stock_code': candidate['stock_code'],
+                        'stock_name': candidate['stock_name'],
+                        'reason': '执行日缺少开盘价（数据缺失/停牌）',
+                        'rank': candidate.get('rank'),
+                    })
                     continue
+                open_price = float(execute_quote['open'])
                 budget = min(target_position_value, cash)
-                shares = to_lot_shares(budget, execute_quote['open'])
+                shares = to_lot_shares(budget, open_price)
                 if shares < 100:
+                    buy_skipped.append({
+                        'stock_code': candidate['stock_code'],
+                        'stock_name': candidate['stock_name'],
+                        'reason': f'资金不足买入1手（预算 {budget:.2f}，开盘价 {open_price:.2f}）',
+                        'rank': candidate.get('rank'),
+                    })
                     continue
-                amount = shares * execute_quote['open']
+                amount = shares * open_price
                 cash -= amount
                 holdings[candidate['stock_code']] = {
                     'stock_code': candidate['stock_code'],
                     'stock_name': candidate['stock_name'],
                     'shares': shares,
-                    'cost_price': execute_quote['open'],
+                    'cost_price': open_price,
                     'entry_index': idx + 1,
                 }
                 buy_record = {
@@ -300,7 +314,7 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
                     'stock_code': candidate['stock_code'],
                     'stock_name': candidate['stock_name'],
                     'shares': shares,
-                    'price': round(execute_quote['open'], 2),
+                    'price': round(open_price, 2),
                     'amount': round(amount, 2),
                     'reason': f"入选第 {candidate['rank']} 名，得分 {candidate['score']:.2f}。{candidate['reason']}",
                     'score': round(candidate['score'], 2),
@@ -348,7 +362,17 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
 
         trade_records.extend(stop_sells)
 
-        if buys or sells or stop_sells:
+        target_stocks = []
+        for code in target_codes:
+            ranked = ranking_map.get(code)
+            if ranked:
+                target_stocks.append(f"{ranked['stock_name']}({code})")
+            elif code in holdings:
+                target_stocks.append(f"{holdings[code]['stock_name']}({code})")
+            else:
+                target_stocks.append(code)
+
+        if buys or sells or stop_sells or buy_skipped:
             rebalance_events.append({
                 'signal_date': signal_date,
                 'execute_date': execute_date,
@@ -356,7 +380,8 @@ def run_backtest(context: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, A
                 'sell_count': len(sells) + len(stop_sells),
                 'buy_stocks': [f"{item['stock_name']}({item['stock_code']})" for item in buys],
                 'sell_stocks': [f"{item['stock_name']}({item['stock_code']})" for item in sells + stop_sells],
-                'top_candidates': [f"{item['stock_name']}({item['stock_code']})" for item in rankings[:max_positions]],
+                'target_stocks': target_stocks,
+                'buy_skipped': buy_skipped[:10],
             })
 
     last_date = dates[-1]

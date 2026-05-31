@@ -237,6 +237,7 @@
                 <th>执行日</th>
                 <th>买入</th>
                 <th>卖出</th>
+                <th>买入失败</th>
                 <th>目标组合</th>
               </tr>
             </thead>
@@ -246,7 +247,13 @@
                 <td>{{ item.execute_date }}</td>
                 <td>{{ item.buy_stocks.join('、') || '-' }}</td>
                 <td>{{ item.sell_stocks.join('、') || '-' }}</td>
-                <td>{{ item.top_candidates.join('、') || '-' }}</td>
+                <td>
+                  <span v-if="item.buy_skipped && item.buy_skipped.length">
+                    {{ item.buy_skipped.map(v => `${v.stock_name}(${v.stock_code})-${v.reason}`).join('；') }}
+                  </span>
+                  <span v-else>-</span>
+                </td>
+                <td>{{ (item.target_stocks || []).join('、') || '-' }}</td>
               </tr>
             </tbody>
           </table>
