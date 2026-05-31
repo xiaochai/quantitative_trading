@@ -395,7 +395,11 @@
             <tbody>
               <tr v-for="(item, index) in planData.next_day_actions" :key="`${item.stock_code}-${item.action}-${index}`">
                 <td><span class="trade-type" :class="{ buy: item.action === 'BUY', sell: item.action === 'SELL' }">{{ item.action }}</span></td>
-                <td>{{ item.stock_name }} / {{ item.stock_code }}</td>
+                <td>
+                  <button type="button" class="stock-link-btn" @click="openStockDetail(item.stock_code)">
+                    {{ item.stock_name }} / {{ item.stock_code }}
+                  </button>
+                </td>
                 <td>{{ item.shares.toLocaleString() }}</td>
                 <td>¥{{ item.reference_price.toFixed(2) }}</td>
                 <td>¥{{ formatNumber(item.reference_amount) }}</td>
@@ -476,6 +480,12 @@ const currentStrategy = computed(() => strategies.value.find(item => item.id ===
 
 function goBack() {
   router.push({ name: 'Home' })
+}
+
+function openStockDetail(code) {
+  if (!code) return
+  const routeLocation = router.resolve({ name: 'StockDetail', params: { code } })
+  window.open(routeLocation.href, '_blank', 'noopener')
 }
 
 function encodeParams(value) {
@@ -721,7 +731,7 @@ watch(selectedStrategyId, value => {
   }
 })
 
-watch([startDate, endDate], ([s, e]) => {
+watch([startDate, endDate], ([s]) => {
   if (s) {
     selectedPeriod.value = 'custom'
   }
@@ -1068,6 +1078,21 @@ onUnmounted(() => {
 .trade-type.sell {
   color: #ff6b6b;
   background: rgba(255, 107, 107, 0.15);
+}
+
+.stock-link-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #00d4ff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.stock-link-btn:hover {
+  color: #66e6ff;
+  text-decoration: underline;
 }
 
 .plan-card {

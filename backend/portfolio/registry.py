@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from portfolio.strategies.hs300_rotation import STRATEGY as HS300_ROTATION_STRATEGY
+from portfolio.strategies.hs300_rotation_enhanced import STRATEGY as HS300_ROTATION_ENHANCED_STRATEGY
 
 PORTFOLIO_STRATEGIES: Dict[str, Dict[str, Any]] = {
     HS300_ROTATION_STRATEGY['id']: HS300_ROTATION_STRATEGY,
+    HS300_ROTATION_ENHANCED_STRATEGY['id']: HS300_ROTATION_ENHANCED_STRATEGY,
 }
 
 DEFAULT_STRATEGY_ID = HS300_ROTATION_STRATEGY['id']
