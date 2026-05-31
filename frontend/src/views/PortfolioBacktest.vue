@@ -39,6 +39,14 @@
           </select>
         </div>
         <div class="config-item">
+          <label>开始日期</label>
+          <input v-model="startDate" type="date" class="tech-input" />
+        </div>
+        <div class="config-item">
+          <label>结束日期</label>
+          <input v-model="endDate" type="date" class="tech-input" />
+        </div>
+        <div class="config-item">
           <label>初始资金</label>
           <input v-model.number="initialCapital" type="number" min="10000" step="1000" class="tech-input" />
         </div>
@@ -429,10 +437,11 @@
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { apiFetch } from '../api'
 
+const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
@@ -445,6 +454,8 @@ const universeOptions = ref([])
 const selectedStrategyId = ref('')
 const selectedUniverseId = ref('hs300')
 const selectedPeriod = ref('2y')
+const startDate = ref('')
+const endDate = ref('')
 const initialCapital = ref(100000)
 const maxPositions = ref(3)
 const cashReserveRatio = ref(0.1)
@@ -458,6 +469,56 @@ const currentStrategy = computed(() => strategies.value.find(item => item.id ===
 
 function goBack() {
   router.push({ name: 'Home' })
+}
+
+function encodeParams(value) {
+  return encodeURIComponent(JSON.stringify(value ?? {}))
+}
+
+function decodeParams(value) {
+  if (!value || typeof value !== 'string') return null
+  try {
+    return JSON.parse(decodeURIComponent(value))
+  } catch (error) {
+    return null
+  }
+}
+
+function setQueryFromState() {
+  const query = {
+    universe: selectedUniverseId.value,
+    strategy: selectedStrategyId.value,
+    period: selectedPeriod.value,
+    start: startDate.value || undefined,
+    end: endDate.value || undefined,
+    capital: String(initialCapital.value),
+    positions: String(maxPositions.value),
+    cash: String(cashReserveRatio.value),
+    params: encodeParams(strategyParams.value),
+  }
+  Object.keys(query).forEach(key => {
+    if (query[key] === undefined || query[key] === null || query[key] === '') {
+      delete query[key]
+    }
+  })
+  router.replace({ name: 'PortfolioBacktest', query })
+}
+
+function applyStateFromQuery() {
+  const q = route.query || {}
+  if (typeof q.universe === 'string') selectedUniverseId.value = q.universe
+  if (typeof q.strategy === 'string') selectedStrategyId.value = q.strategy
+  if (typeof q.period === 'string') selectedPeriod.value = q.period
+  if (typeof q.start === 'string') startDate.value = q.start
+  if (typeof q.end === 'string') endDate.value = q.end
+  if (typeof q.capital === 'string' && !Number.isNaN(Number(q.capital))) initialCapital.value = Number(q.capital)
+  if (typeof q.positions === 'string' && !Number.isNaN(Number(q.positions))) maxPositions.value = Number(q.positions)
+  if (typeof q.cash === 'string' && !Number.isNaN(Number(q.cash))) cashReserveRatio.value = Number(q.cash)
+
+  const decoded = typeof q.params === 'string' ? decodeParams(q.params) : null
+  if (decoded && typeof decoded === 'object') {
+    strategyParams.value = { ...strategyParams.value, ...decoded }
+  }
 }
 
 function formatNumber(value) {
@@ -496,6 +557,7 @@ async function fetchCatalog() {
 async function runBacktest() {
   loading.value = true
   try {
+    setQueryFromState()
     const response = await apiFetch('/portfolio/backtest/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -503,6 +565,8 @@ async function runBacktest() {
         universe_id: selectedUniverseId.value,
         strategy_id: selectedStrategyId.value,
         period: selectedPeriod.value,
+        start_date: startDate.value || null,
+        end_date: endDate.value || null,
         initial_capital: initialCapital.value,
         max_positions: maxPositions.value,
         cash_reserve_ratio: cashReserveRatio.value,
@@ -558,6 +622,7 @@ function renderEquityChart() {
   const dates = portfolioData.value.equity_curve.map(item => item.date)
   const equity = portfolioData.value.equity_curve.map(item => item.equity)
   const benchmarkEquity = (portfolioData.value.benchmark_curve || []).map(item => item.equity)
+  const benchmarkName = `${portfolioData.value.benchmark?.label || '基准'}基准`
   const rebalances = portfolioData.value.rebalance_events.map(item => {
     const idx = dates.findIndex(date => date === item.signal_date)
     return idx >= 0 ? [idx, equity[idx]] : null
@@ -585,7 +650,7 @@ function renderEquityChart() {
       },
     },
     legend: {
-      data: ['资金曲线', '沪深300基准', '调仓节点'],
+      data: ['资金曲线', benchmarkName, '调仓节点'],
       textStyle: { color: '#98a2b3' },
       top: 10,
     },
@@ -621,7 +686,7 @@ function renderEquityChart() {
         showSymbol: false,
       },
       {
-        name: '沪深300基准',
+        name: benchmarkName,
         type: 'line',
         data: benchmarkEquity.length === equity.length ? benchmarkEquity : [],
         smooth: true,
@@ -649,6 +714,12 @@ watch(selectedStrategyId, value => {
   }
 })
 
+watch([startDate, endDate], ([s, e]) => {
+  if (s) {
+    selectedPeriod.value = 'custom'
+  }
+})
+
 watch(
   () => [loading.value, portfolioData.value],
   async ([isLoading, data]) => {
@@ -661,6 +732,8 @@ watch(
 
 onMounted(async () => {
   await fetchCatalog()
+  applyStateFromQuery()
+  applyStrategyDefaults(selectedStrategyId.value)
   await runBacktest()
   await generatePlan()
   window.addEventListener('resize', handleResize)

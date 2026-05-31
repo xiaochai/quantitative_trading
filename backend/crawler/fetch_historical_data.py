@@ -18,6 +18,47 @@ import akshare as ak
 import math
 
 
+def _parse_trade_date(value):
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, dict):
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        for fmt in ("%Y-%m-%d", "%Y%m%d"):
+            try:
+                return datetime.strptime(value, fmt).date()
+            except ValueError:
+                continue
+        try:
+            return pd.to_datetime(value).date()
+        except Exception:
+            return None
+    if isinstance(value, (int, float)):
+        if value <= 0:
+            return None
+        ts = float(value)
+        if ts > 10_000_000_000:
+            ts = ts / 1000.0
+        try:
+            return datetime.fromtimestamp(ts).date()
+        except Exception:
+            return None
+    if hasattr(value, "to_pydatetime"):
+        try:
+            return value.to_pydatetime().date()
+        except Exception:
+            return None
+    try:
+        return pd.to_datetime(value).date()
+    except Exception:
+        return None
+
+
 def get_data_dir():
     """获取数据存储目录"""
     crawler_dir = os.path.dirname(os.path.abspath(__file__))
@@ -40,9 +81,12 @@ def load_historical_from_file(stock_code, start_date, end_date):
         return None
     
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            df = pd.read_json(file_path)
-            return df
+        df = pd.read_json(file_path, orient='records')
+        if df is None or df.empty:
+            return None
+        if '日期' not in df.columns:
+            return None
+        return df
     except Exception as e:
         print(f"加载历史数据文件失败: {e}")
         return None
@@ -122,6 +166,8 @@ def calculate_indicators(df):
 
 def _convert_nan(value):
     """将NaN值转换为None以便数据库存储"""
+    if isinstance(value, dict):
+        return None
     if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
         return None
     if pd.isna(value):
@@ -138,13 +184,9 @@ def save_historical_to_db(db, stock_code, df):
     updated_count = 0
     
     for _, row in df.iterrows():
-        date_val = row['日期']
-        if isinstance(date_val, datetime):
-            trade_date = date_val.date()
-        elif isinstance(date_val, str):
-            trade_date = datetime.strptime(date_val, '%Y-%m-%d').date()
-        else:
-            trade_date = date_val
+        trade_date = _parse_trade_date(row.get('日期'))
+        if trade_date is None:
+            continue
         
         volume_val = row['成交量']
         if pd.isna(volume_val) or volume_val is None:

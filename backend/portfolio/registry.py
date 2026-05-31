@@ -13,6 +13,7 @@ DEFAULT_UNIVERSE_ID = 'hs300'
 
 UNIVERSE_OPTIONS = [
     {'id': 'hs300', 'label': '沪深300'},
+    {'id': 'csi500', 'label': '中证500'},
 ]
 
 PERIOD_OPTIONS = {
@@ -20,6 +21,7 @@ PERIOD_OPTIONS = {
     '1y': 365,
     '2y': 730,
     '3y': 1095,
+    'custom': 0,
 }
 
 PERIOD_OPTION_LIST = [
@@ -27,6 +29,7 @@ PERIOD_OPTION_LIST = [
     {'id': '1y', 'label': '近1年'},
     {'id': '2y', 'label': '近2年'},
     {'id': '3y', 'label': '近3年'},
+    {'id': 'custom', 'label': '自定义区间'},
 ]
 
 

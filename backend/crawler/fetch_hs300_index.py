@@ -20,13 +20,21 @@ def _parse_date(value):
     return value
 
 
-def fetch_hs300_index(start_date: str, end_date: str):
-    return ak.stock_zh_index_daily_em(symbol='sh000300', start_date=start_date, end_date=end_date)
+def _index_symbol(index_code: str) -> str:
+    code = str(index_code).strip()
+    if code.startswith('399'):
+        return f"sz{code}"
+    return f"sh{code}"
 
 
-def fetch_hs300_index_via_stock_hist(start_date: str, end_date: str):
+def fetch_index_daily(index_code: str, start_date: str, end_date: str):
+    symbol = _index_symbol(index_code)
+    return ak.stock_zh_index_daily_em(symbol=symbol, start_date=start_date, end_date=end_date)
+
+
+def fetch_index_via_stock_hist(index_code: str, start_date: str, end_date: str):
     df = ak.stock_zh_a_hist(
-        symbol='sh000300',
+        symbol=_index_symbol(index_code),
         period='daily',
         start_date=start_date,
         end_date=end_date,
@@ -58,7 +66,7 @@ def fetch_hs300_index_via_stock_hist(start_date: str, end_date: str):
     return df
 
 
-def fetch_hs300_index_fallback(start_date: str, end_date: str):
+def fetch_index_fallback(index_code: str, start_date: str, end_date: str):
     start_dt = datetime.strptime(start_date, '%Y%m%d').date()
     end_dt = datetime.strptime(end_date, '%Y%m%d').date()
 
@@ -66,7 +74,7 @@ def fetch_hs300_index_fallback(start_date: str, end_date: str):
     last_error = None
     for fn in ['stock_zh_index_daily_tx', 'stock_zh_index_daily']:
         try:
-            df = getattr(ak, fn)(symbol='sh000300')
+            df = getattr(ak, fn)(symbol=_index_symbol(index_code))
             last_error = None
             break
         except Exception as ex:
@@ -97,7 +105,7 @@ def fetch_hs300_index_fallback(start_date: str, end_date: str):
     return df
 
 
-def fetch_hs300_index_range(start_date: str, end_date: str, chunk_days: int = 180, retries: int = 3):
+def fetch_index_range(index_code: str, start_date: str, end_date: str, chunk_days: int = 180, retries: int = 3):
     start_dt = datetime.strptime(start_date, '%Y%m%d')
     end_dt = datetime.strptime(end_date, '%Y%m%d')
     all_frames = []
@@ -111,7 +119,7 @@ def fetch_hs300_index_range(start_date: str, end_date: str, chunk_days: int = 18
         last_error = None
         for i in range(retries):
             try:
-                df = fetch_hs300_index(s, e)
+                df = fetch_index_daily(index_code, s, e)
                 if df is not None and not df.empty:
                     all_frames.append(df)
                 last_error = None
@@ -133,7 +141,11 @@ def fetch_hs300_index_range(start_date: str, end_date: str, chunk_days: int = 18
     return merged
 
 
-def save_to_db(db, df: pd.DataFrame):
+def fetch_hs300_index_range(start_date: str, end_date: str, chunk_days: int = 180, retries: int = 3):
+    return fetch_index_range('000300', start_date, end_date, chunk_days=chunk_days, retries=retries)
+
+
+def save_to_db(db, df: pd.DataFrame, index_code: str = '000300'):
     if df is None or df.empty:
         return 0, 0
 
@@ -141,6 +153,7 @@ def save_to_db(db, df: pd.DataFrame):
     updated = 0
     df = df.sort_values('date')
     prev_close = None
+    index_code = str(index_code).strip()
 
     for _, row in df.iterrows():
         trade_date = _parse_date(row['date'])
@@ -158,7 +171,7 @@ def save_to_db(db, df: pd.DataFrame):
             prev_close = close_
 
         existing = db.query(IndexDailyQuote).filter(
-            IndexDailyQuote.index_code == '000300',
+            IndexDailyQuote.index_code == index_code,
             IndexDailyQuote.trade_date == trade_date
         ).first()
 
@@ -173,7 +186,7 @@ def save_to_db(db, df: pd.DataFrame):
             updated += 1
         else:
             item = IndexDailyQuote(
-                index_code='000300',
+                index_code=index_code,
                 trade_date=trade_date,
                 open=open_,
                 close=close_,
@@ -193,28 +206,32 @@ def save_to_db(db, df: pd.DataFrame):
 def main():
     end = datetime.today().strftime('%Y%m%d')
     start = (datetime.today() - timedelta(days=365 * 5)).strftime('%Y%m%d')
+    index_codes = ['000300', '000905'] # 沪深300指数和中证500指数
 
     if len(sys.argv) >= 2:
         start = sys.argv[1]
     if len(sys.argv) >= 3:
         end = sys.argv[2]
+    if len(sys.argv) >= 4:
+        index_codes = [item.strip() for item in sys.argv[3].split(',') if item.strip()]
 
     init_db()
     db = SessionLocal()
     try:
-        try:
-            df = fetch_hs300_index_range(start, end, chunk_days=180, retries=3)
-        except Exception as ex:
-            print(f'东方财富抓取失败，切换备用源: {type(ex).__name__}: {ex}')
+        for index_code in index_codes:
             try:
-                df = fetch_hs300_index_via_stock_hist(start, end)
-                if df is None or df.empty:
-                    raise RuntimeError('stock_zh_a_hist returned empty')
-            except Exception as ex2:
-                print(f'个股历史接口抓取失败，切换备用源: {type(ex2).__name__}: {ex2}')
-                df = fetch_hs300_index_fallback(start, end)
-        inserted, updated = save_to_db(db, df)
-        print(f'沪深300指数抓取完成: inserted={inserted}, updated={updated}, rows={0 if df is None else len(df)}')
+                df = fetch_index_range(index_code, start, end, chunk_days=180, retries=3)
+            except Exception as ex:
+                print(f'东方财富抓取失败({index_code})，切换备用源: {type(ex).__name__}: {ex}')
+                try:
+                    df = fetch_index_via_stock_hist(index_code, start, end)
+                    if df is None or df.empty:
+                        raise RuntimeError('stock_zh_a_hist returned empty')
+                except Exception as ex2:
+                    print(f'个股历史接口抓取失败({index_code})，切换备用源: {type(ex2).__name__}: {ex2}')
+                    df = fetch_index_fallback(index_code, start, end)
+            inserted, updated = save_to_db(db, df, index_code=index_code)
+            print(f'指数抓取完成({index_code}): inserted={inserted}, updated={updated}, rows={0 if df is None else len(df)}')
     finally:
         db.close()
 

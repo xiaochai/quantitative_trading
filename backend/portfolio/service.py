@@ -67,28 +67,39 @@ def load_hs300_index_close_map(dates: List[str], db: Session, lookback_days: int
     return close_map
 
 
-def build_hs300_benchmark_curve(
+def build_benchmark_curve(
     dates: List[str],
     db: Session,
     initial_capital: float,
+    universe_id: str,
 ) -> Dict[str, Any]:
     if not dates:
         return {
-            'benchmark': {'id': 'hs300', 'label': '沪深300', 'method': 'unavailable'},
+            'benchmark': {'id': universe_id, 'label': '基准', 'method': 'unavailable'},
             'benchmark_curve': [],
         }
 
     start = date.fromisoformat(dates[0])
     end = date.fromisoformat(dates[-1])
+    benchmark_map = {
+        'hs300': {'index_code': '000300', 'label': '沪深300'},
+        'csi500': {'index_code': '000905', 'label': '中证500'},
+    }
+    benchmark = benchmark_map.get(universe_id)
+    if not benchmark:
+        return {
+            'benchmark': {'id': universe_id, 'label': '基准', 'method': 'unavailable'},
+            'benchmark_curve': [],
+        }
     rows = db.query(IndexDailyQuote).filter(
-        IndexDailyQuote.index_code == '000300',
+        IndexDailyQuote.index_code == benchmark['index_code'],
         IndexDailyQuote.trade_date >= (start - timedelta(days=20)),
         IndexDailyQuote.trade_date <= end,
     ).order_by(IndexDailyQuote.trade_date).all()
 
     if not rows:
         return {
-            'benchmark': {'id': 'hs300', 'label': '沪深300', 'method': 'unavailable'},
+            'benchmark': {'id': universe_id, 'label': benchmark['label'], 'method': 'unavailable'},
             'benchmark_curve': [],
         }
 
@@ -111,7 +122,7 @@ def build_hs300_benchmark_curve(
 
     method = 'index_close'
     return {
-        'benchmark': {'id': 'hs300', 'label': '沪深300', 'method': method},
+        'benchmark': {'id': universe_id, 'label': benchmark['label'], 'method': method},
         'benchmark_curve': curve,
     }
 
@@ -132,10 +143,15 @@ def _latest_stock_info_query(db: Session):
 
 
 def get_universe_members(universe_id: str, db: Session) -> Dict[str, Dict[str, Any]]:
-    if universe_id != 'hs300':
+    universe_tag_map = {
+        'hs300': '沪深300',
+        'csi500': '中证500',
+    }
+    tag = universe_tag_map.get(universe_id)
+    if not tag:
         raise HTTPException(status_code=400, detail=f'Unsupported universe: {universe_id}')
 
-    rows = _latest_stock_info_query(db).filter(StockInfo.component_tags.like('%"沪深300"%')).all()
+    rows = _latest_stock_info_query(db).filter(StockInfo.component_tags.like(f'%"{tag}"%')).all()
     members = {}
     for row in rows:
         members[row.stock_code] = {
@@ -149,7 +165,7 @@ def get_universe_members(universe_id: str, db: Session) -> Dict[str, Dict[str, A
 
 
 def load_universe_quotes(request: PortfolioBacktestRequest, universe_members: Dict[str, Dict[str, Any]], db: Session):
-    if request.period not in PERIOD_OPTIONS:
+    if request.start_date is None and request.period not in PERIOD_OPTIONS:
         raise HTTPException(status_code=400, detail=f'Unsupported period: {request.period}')
 
     codes = list(universe_members.keys())
@@ -166,6 +182,8 @@ def load_universe_quotes(request: PortfolioBacktestRequest, universe_members: Di
     actual_end_date = request.end_date or quotes[-1].trade_date
     actual_start_date = request.start_date
     if actual_start_date is None:
+        if request.period == 'custom':
+            raise HTTPException(status_code=400, detail='Custom period requires start_date or end_date')
         actual_start_date = actual_end_date - timedelta(days=PERIOD_OPTIONS[request.period])
 
     filtered = [item for item in quotes if item.trade_date >= actual_start_date]
@@ -247,11 +265,11 @@ def execute_portfolio_backtest(request: PortfolioBacktestRequest, db: Session) -
     strategy = PORTFOLIO_STRATEGIES[request.strategy_id]
     params = {**get_strategy_defaults(request.strategy_id), **request.strategy_params}
     result = strategy['runner'](context, params)
-    benchmark = build_hs300_benchmark_curve(context['dates'], db, request.initial_capital)
+    benchmark = build_benchmark_curve(context['dates'], db, request.initial_capital, request.universe_id)
     return {
         'universe': {
             'id': request.universe_id,
-            'label': '沪深300',
+            'label': next((item['label'] for item in UNIVERSE_OPTIONS if item['id'] == request.universe_id), request.universe_id),
             'size': len(universe_members),
         },
         'strategy': {
@@ -282,7 +300,7 @@ def generate_portfolio_plan(request: PortfolioPlanRequest, db: Session) -> Dict[
     params = {**get_strategy_defaults(request.strategy_id), **request.strategy_params}
     plan = strategy['planner'](context, params, [item.model_dump() for item in request.holdings], request.current_cash)
     return {
-        'universe': {'id': request.universe_id, 'label': '沪深300', 'size': len(universe_members)},
+        'universe': {'id': request.universe_id, 'label': next((item['label'] for item in UNIVERSE_OPTIONS if item['id'] == request.universe_id), request.universe_id), 'size': len(universe_members)},
         'strategy': {**build_strategy_meta(request.strategy_id), 'params': params},
         **plan,
     }
