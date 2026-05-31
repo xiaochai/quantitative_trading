@@ -5,7 +5,7 @@
 import sys
 import os
 import json
-from datetime import datetime
+from datetime import datetime, date
 
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -105,7 +105,7 @@ def update_stock_info(stock_tags):
     init_db()
     db = SessionLocal()
     
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = date.today()
     updated_count = 0
     inserted_count = 0
     

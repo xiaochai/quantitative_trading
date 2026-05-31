@@ -244,6 +244,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
+import { apiFetch } from '../api'
 
 const router = useRouter()
 
@@ -287,7 +288,7 @@ function applyStrategyDefaults(strategyId) {
 }
 
 async function fetchStrategies() {
-  const response = await fetch('/api/backtest/strategies')
+  const response = await apiFetch('/backtest/strategies')
   const result = await response.json()
   strategies.value = result.strategies || []
   periodOptions.value = result.period_options || []
@@ -304,7 +305,7 @@ async function handleStockSearch() {
     stockOptions.value = []
     return
   }
-  const response = await fetch(`/api/stocks?search=${encodeURIComponent(keyword)}`)
+  const response = await apiFetch(`/stocks?search=${encodeURIComponent(keyword)}`)
   const result = await response.json()
   stockOptions.value = (result || []).slice(0, 8)
 }
@@ -322,7 +323,7 @@ async function runBacktest() {
   if (!selectedStock.value || !selectedStrategyId.value) return
   loading.value = true
   try {
-    const response = await fetch('/api/backtest/run', {
+    const response = await apiFetch('/backtest/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

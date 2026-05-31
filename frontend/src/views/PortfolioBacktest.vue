@@ -431,6 +431,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
+import { apiFetch } from '../api'
 
 const router = useRouter()
 
@@ -482,7 +483,7 @@ function removeHolding(index) {
 }
 
 async function fetchCatalog() {
-  const response = await fetch('/api/portfolio/strategies')
+  const response = await apiFetch('/portfolio/strategies')
   const result = await response.json()
   strategies.value = result.strategies || []
   periodOptions.value = result.period_options || []
@@ -495,7 +496,7 @@ async function fetchCatalog() {
 async function runBacktest() {
   loading.value = true
   try {
-    const response = await fetch('/api/portfolio/backtest/run', {
+    const response = await apiFetch('/portfolio/backtest/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -523,7 +524,7 @@ async function runBacktest() {
 async function generatePlan() {
   planning.value = true
   try {
-    const response = await fetch('/api/portfolio/plan', {
+    const response = await apiFetch('/portfolio/plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

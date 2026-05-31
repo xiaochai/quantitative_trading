@@ -3,11 +3,14 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# 获取 database.py 文件所在目录
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "../..", "quantitative_trading.db")
-DB_PATH = os.path.abspath(DB_PATH)
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+DEFAULT_DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "../..", "quantitative_trading.db"))
+
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+if not SQLALCHEMY_DATABASE_URL:
+    db_path = os.getenv("QUANT_DB_PATH") or DEFAULT_DB_PATH
+    db_path = os.path.abspath(db_path)
+    SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}

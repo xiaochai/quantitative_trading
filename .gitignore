@@ -36,6 +36,8 @@ venv/
 # Database
 *.sqlite
 *.sqlite3
+*.db
+quantitative_trading.db
 
 # Data files
 *.csv

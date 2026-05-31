@@ -124,6 +124,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { apiFetch } from '../api'
 
 const router = useRouter()
 const activeTab = ref('daily_quotes')
@@ -207,10 +208,10 @@ const tableColumns = computed(() => {
 })
 
 const apiEndpoints = {
-  daily_quotes: '/api/data/daily_quotes',
-  index_daily_quotes: '/api/data/index_daily_quotes',
-  stock_fundamentals: '/api/data/stock_fundamentals',
-  stock_info: '/api/data/stock_info'
+  daily_quotes: '/data/daily_quotes',
+  index_daily_quotes: '/data/index_daily_quotes',
+  stock_fundamentals: '/data/stock_fundamentals',
+  stock_info: '/data/stock_info'
 }
 
 const filterParamName = computed(() => {
@@ -252,7 +253,7 @@ async function loadData() {
     if (filterStockCode.value) {
       url += `&${filterParamName.value}=${encodeURIComponent(filterStockCode.value)}`
     }
-    const response = await fetch(url)
+    const response = await apiFetch(url)
     const data = await response.json()
     total.value = data.total
     tableData.value = data.items

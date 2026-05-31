@@ -127,6 +127,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { apiFetch } from '../api'
 
 const router = useRouter()
 
@@ -138,15 +139,15 @@ const searchKeyword = ref('')
 async function fetchStocks(index = null, search = null) {
   loading.value = true
   try {
-    let url = '/api/stocks'
+    let url = '/stocks'
     const params = new URLSearchParams()
     if (index) params.append('index', index)
     if (search) params.append('search', search)
     if (params.toString()) url += '?' + params.toString()
     
     const [stocksRes, summaryRes] = await Promise.all([
-      fetch(url),
-      fetch('/api/stocks/summary')
+      apiFetch(url),
+      apiFetch('/stocks/summary')
     ])
     stocks.value = await stocksRes.json()
     summary.value = await summaryRes.json()

@@ -269,6 +269,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
+import { apiFetch } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -321,15 +322,15 @@ async function loadStockData() {
   loading.value = true
   try {
     // 加载股票信息
-    const infoRes = await fetch(`/api/stock/${code}/info`)
+    const infoRes = await apiFetch(`/stock/${code}/info`)
     stockInfo.value = await infoRes.json()
     
     // 加载日线数据
-    const quotesRes = await fetch(`/api/stock/${code}/quotes`)
+    const quotesRes = await apiFetch(`/stock/${code}/quotes`)
     quotes.value = await quotesRes.json()
     
     // 加载财务数据
-    const fundRes = await fetch(`/api/stock/${code}/fundamentals`)
+    const fundRes = await apiFetch(`/stock/${code}/fundamentals`)
     fundamentals.value = await fundRes.json()
     
     loading.value = false
